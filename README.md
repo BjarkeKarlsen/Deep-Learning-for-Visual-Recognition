@@ -1,34 +1,24 @@
 # Deepfake Detection CNN
 
-Minimal CNN for SID_Set dataset (3 classes: real, synthetic, tampered).
+CNN for deepfake detection using SID_Set dataset.
 
 ## Setup
+
 ```bash
+# Create environment
+conda create -n deepfake-detection python=3.10
+conda activate deepfake-detection
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Usage
+## Run
+
 ```bash
-# Train model (300 samples, 8 epochs)
+# Train model
 python main.py --train
 
-# Evaluate model (200 test samples)
+# Evaluate model
 python main.py --eval
 ```
-
-## Performance
-- **70% accuracy** with only 300 training samples
-- **97.7% F1** on synthetic images (best)
-- **49.1% F1** on real images
-
-## Files
-```
-deepfake/
-├── main.py                  # Training & evaluation script
-├── models/best_model.pth    # Trained model (70% acc)
-├── results/evaluation.json  # Evaluation metrics
-├── requirements.txt         # Dependencies (5 packages)
-└── README.md               # This file
-```
-
-Dataset uses **streaming** to load only needed samples, not full 210k.
