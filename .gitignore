@@ -9,24 +9,8 @@ venv/
 .env
 .venv
 
-# Jupyter Notebooks
-.ipynb_checkpoints
-*.ipynb_checkpoints/
-
-# Model weights (optional - remove if you want to track them)
-# models/*.pth
-
-# Data
-data/cache/
-data/raw/
-*.csv
-*.h5
-
-# Logs
-logs/
-runs/
-*.log
-tensorboard/
+# Model weights (
+models/*.pth
 
 # IDE
 .vscode/
@@ -35,12 +19,10 @@ tensorboard/
 *.swo
 .DS_Store
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# HuggingFace cache (if using non-streaming)
+.cache/
+data/cache/
 
-# Package
-*.egg-info/
-dist/
-build/
+# System files
+Thumbs.db
+*.log
