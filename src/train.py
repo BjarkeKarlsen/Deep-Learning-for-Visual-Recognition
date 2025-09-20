@@ -1,16 +1,20 @@
+import os
+import sys
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, MODEL_PATH,
+    NUM_CLASSES, NUM_WORKERS, SEED, TRAIN_SAMPLES, VAL_SAMPLES
+)
 from .dataset import SIDDataset
 from .model import SimpleCNN
 from .utils import get_device, print_gpu_info, set_seed
-from config import *
 
 def train():
     set_seed(SEED)
@@ -81,6 +85,3 @@ def train():
             print(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
     print(f"\nTraining complete! Best validation: {best_val_acc:.1f}%")
-
-if __name__ == "__main__":
-    train()

@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
+import seaborn as sns
 
 def plot_confusion_matrix(cm, class_names, save_path='results/confusion_matrix.png'):
     plt.figure(figsize=(8, 6))

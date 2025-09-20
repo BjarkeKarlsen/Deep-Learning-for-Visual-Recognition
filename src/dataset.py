@@ -1,49 +1,56 @@
-from torch.utils.data import Dataset
-from torchvision import transforms
-from datasets import load_dataset
-from PIL import Image
 import io
 import os
 import sys
-from itertools import islice
+
+from datasets import load_dataset
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import DATASET_NAME, IMAGE_SIZE, NORMALIZE_MEAN, NORMALIZE_STD, VAL_SAMPLES
 
 class SIDDataset(Dataset):
     def __init__(self, split='train', max_samples=100):
+        print(f"Loading dataset {DATASET_NAME}...")
+
+        ds = load_dataset(DATASET_NAME)
+
         if split == 'test':
-            print(f"Loading test samples from {DATASET_NAME} (split from validation)...")
-            streaming_dataset = load_dataset(DATASET_NAME, split='validation', streaming=True)
-            self.data = list(islice(streaming_dataset, VAL_SAMPLES + max_samples))[VAL_SAMPLES:]
+            print(f"Creating test split from validation data...")
+            self.dataset = ds['validation'].select(range(VAL_SAMPLES, min(VAL_SAMPLES + max_samples, len(ds['validation']))))
         elif split == 'validation':
-            print(f"Loading validation samples from {DATASET_NAME}...")
-            streaming_dataset = load_dataset(DATASET_NAME, split='validation', streaming=True)
-            self.data = list(islice(streaming_dataset, max_samples))
+            print(f"Creating validation split...")
+            self.dataset = ds['validation'].select(range(min(max_samples, len(ds['validation']))))
         else:
-            print(f"Loading {max_samples} samples from {DATASET_NAME} ({split})...")
-            streaming_dataset = load_dataset(DATASET_NAME, split=split, streaming=True)
-            self.data = list(islice(streaming_dataset, max_samples))
+            print(f"Creating training split with {max_samples} samples...")
+            self.dataset = ds['train'].select(range(min(max_samples, len(ds['train']))))
 
         self.transform = transforms.Compose([
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
             transforms.Normalize(mean=NORMALIZE_MEAN, std=NORMALIZE_STD)
         ])
-        print(f"Loaded {len(self.data)} samples")
+
+        print(f"Loaded {len(self.dataset)} samples for {split} split")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.dataset)
 
     def __getitem__(self, idx):
-        item = self.data[idx]
-        if isinstance(item['image'], Image.Image):
-            image = item['image']
-        else:
-            image = Image.open(io.BytesIO(item['image']))
+        item = self.dataset[idx]
+        image = item['image']
+
+        if not isinstance(image, Image.Image):
+            if isinstance(image, bytes):
+                image = Image.open(io.BytesIO(image))
+            else:
+                image = Image.fromarray(image) if hasattr(image, '__array__') else image
 
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
         image = self.transform(image)
         label = int(item['label'])
+
         return image, label

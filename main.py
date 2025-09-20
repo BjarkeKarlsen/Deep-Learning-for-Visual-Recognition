@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-from src.train import train
+
 from src.evaluate import evaluate
+from src.train import train
 
 def main():
     parser = argparse.ArgumentParser(description='Deepfake Detection CNN')

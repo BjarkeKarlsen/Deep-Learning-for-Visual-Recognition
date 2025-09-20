@@ -1,18 +1,22 @@
-import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-import numpy as np
 import json
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sklearn.metrics import classification_report, confusion_matrix
 
+import numpy as np
+import torch
+from sklearn.metrics import classification_report, confusion_matrix
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    CLASS_NAMES, MODEL_PATH, NUM_CLASSES, RESULTS_DIR,
+    TEST_BATCH_SIZE, TEST_SAMPLES
+)
 from .dataset import SIDDataset
 from .model import SimpleCNN
 from .utils import get_device, print_gpu_info
-from .visualize import plot_confusion_matrix, plot_classification_metrics
-from config import *
+from .visualize import plot_classification_metrics, plot_confusion_matrix
 
 def evaluate():
     device = get_device()
@@ -22,6 +26,11 @@ def evaluate():
     print("="*60)
     print_gpu_info(device)
     print("="*60)
+
+    if not os.path.exists(MODEL_PATH):
+        print(f"\nError: Model file not found at {MODEL_PATH}")
+        print("Please train the model first using: python main.py --train")
+        sys.exit(1)
 
     model = SimpleCNN(num_classes=NUM_CLASSES).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
@@ -76,6 +85,3 @@ def evaluate():
     plot_classification_metrics(report)
 
     print("="*60)
-
-if __name__ == "__main__":
-    evaluate()
