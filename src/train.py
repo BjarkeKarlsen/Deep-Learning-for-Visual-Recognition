@@ -40,7 +40,7 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     best_val_acc = 0
-    history = {'train_loss': [], 'train_acc': [], 'val_acc': []}
+    history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
 
     for epoch in range(EPOCHS):
         model.train()
@@ -65,6 +65,7 @@ def train():
             pbar.set_postfix({'loss': f'{loss.item():.3f}'})
 
         model.eval()
+        val_loss = 0
         val_correct = 0
         val_total = 0
 
@@ -72,6 +73,8 @@ def train():
             for images, labels in val_loader:
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
                 _, predicted = torch.max(outputs, 1)
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
@@ -79,12 +82,14 @@ def train():
         train_acc = 100 * train_correct / train_total
         val_acc = 100 * val_correct / val_total
         avg_train_loss = train_loss / len(train_loader)
+        avg_val_loss = val_loss / len(val_loader)
 
         history['train_loss'].append(avg_train_loss)
         history['train_acc'].append(train_acc)
+        history['val_loss'].append(avg_val_loss)
         history['val_acc'].append(val_acc)
 
-        print(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, "
+        print(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, "
               f"Train Acc: {train_acc:.1f}%, Val Acc: {val_acc:.1f}%")
 
         if val_acc > best_val_acc:

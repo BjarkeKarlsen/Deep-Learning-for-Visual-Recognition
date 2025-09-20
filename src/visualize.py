@@ -58,9 +58,11 @@ def plot_training_curves(history, save_path='results/training_curves.png'):
     epochs = range(1, len(history['train_loss']) + 1)
 
     ax1.plot(epochs, history['train_loss'], 'b-', label='Training Loss', linewidth=2)
+    if 'val_loss' in history:
+        ax1.plot(epochs, history['val_loss'], 'r-', label='Validation Loss', linewidth=2)
     ax1.set_xlabel('Epoch', fontsize=12)
     ax1.set_ylabel('Loss', fontsize=12)
-    ax1.set_title('Training Loss Over Epochs', fontsize=14)
+    ax1.set_title('Training & Validation Loss Over Epochs', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend()
 
