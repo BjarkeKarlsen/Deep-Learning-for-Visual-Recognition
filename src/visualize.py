@@ -51,3 +51,28 @@ def plot_classification_metrics(report, save_path='results/metrics_barplot.png')
     plt.savefig(save_path, dpi=100, bbox_inches='tight')
     plt.close()
     print(f"Saved metrics plot to {save_path}")
+
+def plot_training_curves(history, save_path='results/training_curves.png'):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    epochs = range(1, len(history['train_loss']) + 1)
+
+    ax1.plot(epochs, history['train_loss'], 'b-', label='Training Loss', linewidth=2)
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.set_title('Training Loss Over Epochs', fontsize=14)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+
+    ax2.plot(epochs, history['train_acc'], 'b-', label='Training Accuracy', linewidth=2)
+    ax2.plot(epochs, history['val_acc'], 'r-', label='Validation Accuracy', linewidth=2)
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.set_ylabel('Accuracy (%)', fontsize=12)
+    ax2.set_title('Training & Validation Accuracy Over Epochs', fontsize=14)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=100, bbox_inches='tight')
+    plt.close()
+    print(f"Saved training curves to {save_path}")

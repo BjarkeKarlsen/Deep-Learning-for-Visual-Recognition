@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -10,11 +11,12 @@ from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     BATCH_SIZE, EPOCHS, LEARNING_RATE, MODEL_PATH,
-    NUM_CLASSES, NUM_WORKERS, SEED, TRAIN_SAMPLES, VAL_SAMPLES
+    NUM_CLASSES, NUM_WORKERS, RESULTS_DIR, SEED, TRAIN_SAMPLES, VAL_SAMPLES
 )
 from .dataset import SIDDataset
 from .model import SimpleCNN
 from .utils import get_device, print_gpu_info, set_seed
+from .visualize import plot_training_curves
 
 def train():
     set_seed(SEED)
@@ -38,6 +40,7 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     best_val_acc = 0
+    history = {'train_loss': [], 'train_acc': [], 'val_acc': []}
 
     for epoch in range(EPOCHS):
         model.train()
@@ -75,7 +78,13 @@ def train():
 
         train_acc = 100 * train_correct / train_total
         val_acc = 100 * val_correct / val_total
-        print(f"Epoch {epoch+1}: Train Loss: {train_loss/len(train_loader):.4f}, "
+        avg_train_loss = train_loss / len(train_loader)
+
+        history['train_loss'].append(avg_train_loss)
+        history['train_acc'].append(train_acc)
+        history['val_acc'].append(val_acc)
+
+        print(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, "
               f"Train Acc: {train_acc:.1f}%, Val Acc: {val_acc:.1f}%")
 
         if val_acc > best_val_acc:
@@ -85,3 +94,10 @@ def train():
             print(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
     print(f"\nTraining complete! Best validation: {best_val_acc:.1f}%")
+
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    with open(os.path.join(RESULTS_DIR, 'training_history.json'), 'w') as f:
+        json.dump(history, f, indent=2)
+
+    plot_training_curves(history)
+    print(f"Saved training history to {RESULTS_DIR}/training_history.json")
