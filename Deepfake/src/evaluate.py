@@ -21,11 +21,7 @@ from .visualize import plot_classification_metrics, plot_confusion_matrix
 def evaluate():
     device = get_device()
 
-    print("="*60)
-    print("EVALUATION MODE")
-    print("="*60)
-    print_gpu_info(device)
-    print("="*60)
+    print_run_info("EVALUATION", device)
 
     if not os.path.exists(MODEL_PATH):
         print(f"\nError: Model file not found at {MODEL_PATH}")
