@@ -92,7 +92,7 @@ class SIDDataset(Dataset):
             if ex["mask"] is not None:
                 mask = self.transform_mask(ex["mask"])
             else:
-                mask = torch.zeros((1, self.image_size, self.image_size), dtype=torch.float32) # dummy mask maybe we can do without?
+                mask = torch.zeros((1, self.image_size, self.image_size), dtype=torch.float32) # Create dummy mask for samples without mask data
             assert mask.ndim == 3 and mask.shape[1:] == (self.image_size, self.image_size), (
                 f"Mask has wrong shape: {mask.shape}"
             )

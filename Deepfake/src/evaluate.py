@@ -10,7 +10,6 @@ from .model import SimpleCNN
 from .utils import get_device, print_gpu_info
 from .visualize import plot_classification_metrics, plot_confusion_matrix
 from .dataset_manager import SIDDatasetManager
-from .dataset import SIDDataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
@@ -44,7 +43,7 @@ def evaluate(cfg: Config):
             device=device
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_train,
+        shuffle=cfg.loader.shuffle_test,
         num_workers=cfg.loader.num_workers
     )
 
