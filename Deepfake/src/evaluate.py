@@ -15,7 +15,7 @@ from config import (
 )
 from .dataset import SIDDataset
 from .model import SimpleCNN
-from .utils import get_device, print_gpu_info
+from .utils import get_device, print_gpu_info, print_run_info
 from .visualize import plot_classification_metrics, plot_confusion_matrix
 
 def evaluate():
