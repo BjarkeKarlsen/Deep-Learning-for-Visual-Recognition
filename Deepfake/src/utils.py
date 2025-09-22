@@ -23,3 +23,10 @@ def print_gpu_info(device):
         print(f"   GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     else:
         print(f"USING CPU (No GPU detected)")
+        
+def print_run_info(info, device):
+    print("="*60)
+    print(info)
+    print("="*60)
+    print_gpu_info(device)
+    print("="*60)
