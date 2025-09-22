@@ -17,11 +17,7 @@ from config import Config
 def evaluate(cfg: Config):
     device = torch.device(cfg.training.device)
 
-    print("="*60)
-    print("EVALUATION MODE")
-    print("="*60)
-    print_gpu_info(device)
-    print("="*60)
+    print_run_info("EVALUATION", device)
 
     if not os.path.exists(cfg.paths.model_path):
         print(f"\nError: Model file not found at {cfg.paths.model_path}")
