@@ -2,7 +2,6 @@
 **3-class deepfake detection** (Real, Synthetic, Tampered) using the SID_Set dataset  
 For course: *Deep Learning for Visual Recognition | Group 3*
 
-For course: Deep Learning for Visual Recognition | Group 3.
 
 **Note:** Currently downloads the entire SID_Set dataset to `~/.cache/huggingface/datasets/`. To use streaming mode (no download), modify `dataset.py` to use `load_dataset(..., streaming=True)`.
 
