@@ -43,7 +43,7 @@ def evaluate(cfg: Config):
             device=device
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_train,
+        shuffle=cfg.loader.shuffle_test,
         num_workers=cfg.loader.num_workers
     )
 
