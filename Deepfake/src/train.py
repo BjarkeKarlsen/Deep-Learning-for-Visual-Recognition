@@ -57,7 +57,7 @@ def train(cfg: Config):
             device=device
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_train,
+        shuffle=cfg.loader.shuffle_val,
         num_workers=cfg.loader.num_workers
     )
 
