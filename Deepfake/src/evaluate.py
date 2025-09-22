@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from .dataset import SIDDataset
 from .model import SimpleCNN
-from .utils import get_device, print_gpu_info
+from .utils import print_gpu_info
 from .visualize import plot_classification_metrics, plot_confusion_matrix
 from .dataset_manager import SIDDatasetManager
 
