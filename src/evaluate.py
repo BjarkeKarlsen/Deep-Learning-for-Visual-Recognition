@@ -14,30 +14,30 @@ from config import (
     TEST_BATCH_SIZE, TEST_SAMPLES
 )
 from .dataset import SIDDataset
-from .model import SimpleCNN
-from .utils import get_device, print_gpu_info
+from .model import MultiTaskCNN
+from .utils.utils import get_device
 from .visualize import plot_classification_metrics, plot_confusion_matrix
+from .dataset_manager import SIDDatasetManager
+
 
 def evaluate():
     device = get_device()
 
-    print("="*60)
-    print("EVALUATION MODE")
-    print("="*60)
-    print_gpu_info(device)
-    print("="*60)
+    #print_usage("EVALUATION", device)
 
     if not os.path.exists(MODEL_PATH):
         print(f"\nError: Model file not found at {MODEL_PATH}")
         print("Please train the model first using: python main.py --train")
         sys.exit(1)
 
-    model = SimpleCNN(num_classes=NUM_CLASSES).to(device)
+    model = MultiTaskCNN(num_classes=NUM_CLASSES).to(device)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     model.eval()
+    
+    manager = SIDDatasetManager(use_disk_cache=True, use_streaming=True)
 
-    test_dataset = SIDDataset(split='test', max_samples=TEST_SAMPLES)
-    test_loader = DataLoader(test_dataset, batch_size=TEST_BATCH_SIZE, shuffle=False)
+    _, _, test_dataset = manager.get_splits(train_max=0, val_max=0, test_max=TEST_SAMPLES)
+    test_loader = DataLoader(SIDDataset(test_dataset), batch_size=TEST_BATCH_SIZE, shuffle=False)
 
     all_preds = []
     all_labels = []
