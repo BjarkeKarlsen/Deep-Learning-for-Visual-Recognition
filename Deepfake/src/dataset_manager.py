@@ -128,7 +128,7 @@ class SIDDatasetManager:
                 # Ensure cache directory exists
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 print(f"Caching custom {split} split to HF cache: {path}")
-                Dataset.from_dict(ds[:]).save_to_disk(path)
+                ds.save_to_disk(path)
             else:
                 print(f"Skipping cache for empty {split} split")
 
