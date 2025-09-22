@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+
+import os
 import argparse
 
+from src.utils import load_config
 from src.evaluate import evaluate
 from src.train import train
 
@@ -9,11 +12,17 @@ def main():
     parser.add_argument('--train', action='store_true', help='Train the model')
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
     args = parser.parse_args()
+    
+    cfg = load_config()
+    # ensure results & logging dirs exist
+    os.makedirs(cfg.paths.results_dir, exist_ok=True)
+    if cfg.paths.logging_dir:
+        os.makedirs(cfg.paths.logging_dir, exist_ok=True)
 
     if args.train:
-        train()
+        train(cfg)
     elif args.eval:
-        evaluate()
+        evaluate(cfg)
     else:
         print("Please specify --train or --eval")
         parser.print_help()

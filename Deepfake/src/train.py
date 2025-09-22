@@ -1,54 +1,80 @@
-import json
-import os
-import sys
+import json, os, sys
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from config import Config
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import (
-    BATCH_SIZE, EPOCHS, LEARNING_RATE, MODEL_PATH,
-    NUM_CLASSES, NUM_WORKERS, RESULTS_DIR, SEED, TRAIN_SAMPLES, VAL_SAMPLES
-)
+from .dataset_manager import SIDDatasetManager
 from .dataset import SIDDataset
 from .model import SimpleCNN
-from .utils import get_device, print_gpu_info, set_seed
+from .utils import print_gpu_info, set_seed
 from .visualize import plot_training_curves
 
-def train():
-    set_seed(SEED)
-    device = get_device()
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def train(cfg: Config):
+    set_seed(cfg.training.seed)
+    device = torch.device(cfg.training.device)
 
     print("="*60)
     print("TRAINING MODE")
     print("="*60)
     print_gpu_info(device)
-    print(f"Train samples: {TRAIN_SAMPLES}, Val samples: {VAL_SAMPLES}")
-    print(f"Batch size: {BATCH_SIZE}, Epochs: {EPOCHS}")
+    print(f"Train samples: {cfg.data.train_samples}, Val samples: {cfg.data.val_samples}")
+    print(f"Batch size: {cfg.loader.batch_size}, Epochs: {cfg.training.epochs}")
     print("="*60)
 
-    train_dataset = SIDDataset(split='train', max_samples=TRAIN_SAMPLES)
-    val_dataset = SIDDataset(split='validation', max_samples=VAL_SAMPLES)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+    manager = SIDDatasetManager(dataset_name=cfg.data.dataset_name, 
+                                use_disk_cache=cfg.data.use_disk_cache, 
+                                use_streaming=cfg.data.use_streaming)                             
 
-    model = SimpleCNN(num_classes=NUM_CLASSES).to(device)
+    train_ds, val_ds, _ = manager.get_splits(
+        train_max=cfg.data.train_samples, 
+        val_max=cfg.data.val_samples, test_max=0)
+    
+    train_loader = DataLoader(
+        SIDDataset(
+            train_ds,
+            image_size=cfg.model.image_size,
+            normalize_mean=cfg.model.normalize_mean,
+            normalize_std=cfg.model.normalize_std,
+            device=device
+        ),
+        batch_size=cfg.loader.batch_size,
+        shuffle=cfg.loader.shuffle_train,
+        num_workers=cfg.loader.num_workers
+    )
+    
+    val_loader = DataLoader(
+        SIDDataset(
+            val_ds,
+            image_size=cfg.model.image_size,
+            normalize_mean=cfg.model.normalize_mean,
+            normalize_std=cfg.model.normalize_std,
+            device=device
+        ),
+        batch_size=cfg.loader.batch_size,
+        shuffle=cfg.loader.shuffle_train,
+        num_workers=cfg.loader.num_workers
+    )
+
+    model = SimpleCNN(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
 
     best_val_acc = 0
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
 
-    for epoch in range(EPOCHS):
+    for epoch in range(cfg.training.epochs):
         model.train()
         train_loss = 0
         train_correct = 0
         train_total = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.training.epochs}")
         for images, labels in pbar:
             images, labels = images.to(device), labels.to(device)
 
@@ -94,15 +120,15 @@ def train():
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-            torch.save(model.state_dict(), MODEL_PATH)
+            os.makedirs(os.path.dirname(cfg.paths.model_path), exist_ok=True)
+            torch.save(model.state_dict(), cfg.paths.model_path)
             print(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
     print(f"\nTraining complete! Best validation: {best_val_acc:.1f}%")
 
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    with open(os.path.join(RESULTS_DIR, 'training_history.json'), 'w') as f:
+    os.makedirs(cfg.paths.results_dir, exist_ok=True)
+    with open(os.path.join(cfg.paths.results_dir, 'training_history.json'), 'w') as f:
         json.dump(history, f, indent=2)
 
     plot_training_curves(history)
-    print(f"Saved training history to {RESULTS_DIR}/training_history.json")
+    print(f"Saved training history to {cfg.paths.results_dir}/training_history.json")

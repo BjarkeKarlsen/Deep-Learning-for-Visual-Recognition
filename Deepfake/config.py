@@ -1,22 +1,50 @@
-DATASET_NAME = "saberzl/SID_Set"
-NUM_CLASSES = 3
-CLASS_NAMES = {0: 'Real', 1: 'Synthetic', 2: 'Tampered'}
+# config.py
+from dataclasses import dataclass, field
+from typing import List, Optional
 
-IMAGE_SIZE = 224
-NORMALIZE_MEAN = [0.485, 0.456, 0.406]
-NORMALIZE_STD = [0.229, 0.224, 0.225]
+@dataclass
+class DataConfig:
+    dataset_name:   str  = "saberzl/SID_Set"
+    train_samples:  int  = 10
+    val_samples:    int  = 10
+    test_samples:   int  = 10
+    use_streaming:  bool = True
+    use_disk_cache: bool = True
 
-EPOCHS = 100
-BATCH_SIZE = 32
-LEARNING_RATE = 0.001
+@dataclass
+class LoaderConfig:
+    batch_size:    int  = 4
+    shuffle_train: bool = True
+    shuffle_val:   bool = False
+    shuffle_test:  bool = False
+    num_workers:   int  = 4
 
-TRAIN_SAMPLES = 10000
-VAL_SAMPLES = 1000
-TEST_SAMPLES = 1000
-TEST_BATCH_SIZE = 32
-NUM_WORKERS = 8
+@dataclass
+class ModelConfig:
+    num_classes:    int           = 3
+    class_names:   dict          = field(default_factory=lambda: {0: 'Real', 1: 'Synthetic', 2: 'Tampered'})
+    image_size:     int           = 512
+    normalize_mean: List[float]   = field(default_factory=lambda: [0.485, 0.456, 0.406])
+    normalize_std:  List[float]   = field(default_factory=lambda: [0.229, 0.224, 0.225])
 
-MODEL_PATH = 'models/best_model.pth'
-RESULTS_DIR = 'results'
+@dataclass
+class TrainingConfig:
+    epochs:        int    = 100
+    learning_rate: float  = 0.001
+    seed:          int    = 42
+    device:        str    = "cpu"  # auto‐filled at runtime
 
-SEED = 42
+@dataclass
+class PathsConfig:
+    model_path:   str          = "models/best_model.pth"
+    results_dir:  str          = "results"
+    history_file: str          = "training_history.json"
+    logging_dir:  Optional[str]= None
+
+@dataclass
+class Config:
+    data:     DataConfig     = field(default_factory=DataConfig)
+    loader:   LoaderConfig   = field(default_factory=LoaderConfig)
+    model:    ModelConfig    = field(default_factory=ModelConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)
+    paths:    PathsConfig    = field(default_factory=PathsConfig)
