@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 
 def evaluate(cfg: Config):
-    device = get_device()
+    device = torch.device(cfg.training.device)
 
     print("="*60)
     print("EVALUATION MODE")
