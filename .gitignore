@@ -1,3 +1,11 @@
+
+# Model weights (
+*.pth
+
+# HuggingFace cache (if using non-streaming)
+.cache/
+data/cache/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -209,3 +217,6 @@ __marimo__/
 
 # Ignore data files
 **data/
+# HuggingFace cache (if using non-streaming)
+.cache/
+data/cache/

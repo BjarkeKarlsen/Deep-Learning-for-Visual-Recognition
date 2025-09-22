@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+
+# Model weights (
+models/*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# HuggingFace cache (if using non-streaming)
+.cache/
+data/cache/
+
+# System files
+Thumbs.db
+*.log
