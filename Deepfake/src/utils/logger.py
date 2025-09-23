@@ -166,7 +166,7 @@ class SidLogger:
         self.logger.info(f"Saved JSON to {path}")
 
     @contextmanager
-    def time_block(self, name: str) -> ContextManager[float]:
+    def time_block(self, name: str) -> ContextManager[None]:
         """
         Context manager for timing operations:
             with logger.time_block("load data"):
