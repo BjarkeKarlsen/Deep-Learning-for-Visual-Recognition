@@ -158,7 +158,6 @@ def train(cfg: Config):
     save_training_history(cfg.paths.results_dir, history, history_file='training_history.json')
 
     plot_training_curves(history)
-    logger.log_training_complete(total_time=None, best_metric=best_val_acc, best_epoch=None)
     
     
 =======
