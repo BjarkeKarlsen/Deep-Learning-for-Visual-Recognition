@@ -33,7 +33,3 @@ class ConfigLoader:
         os.makedirs(self.cfg.paths.results_dir, exist_ok=True)
         if self.cfg.paths.logging_dir:
             os.makedirs(self.cfg.paths.logging_dir, exist_ok=True)
-
-        # IDK IF KEEP
-    def get_device(self):
-        return 'cuda' if torch.cuda.is_available() else 'cpu'
