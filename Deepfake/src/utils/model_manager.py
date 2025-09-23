@@ -2,9 +2,10 @@ import os, sys, json
 
 def check_model_exists(model_path):
         if not os.path.exists(model_path):
-            print(f"\nError: Model file not found at {model_path}")
-            print("Please train/test the model first using: python main.py --train or --eval")
-            sys.exit(1)
+            raise FileNotFoundError(
+                f"Model file not found at {model_path}. "
+                "Please train/test the model first using: python main.py --train or --eval"
+            )
             
             
 def save_training_history(results_dir, history, history_file='training_history.json'):
