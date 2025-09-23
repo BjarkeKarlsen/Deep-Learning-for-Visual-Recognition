@@ -130,7 +130,7 @@ def evaluate(cfg: Config):
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
 <<<<<<< HEAD
-    logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
+    logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names.values()))
 =======
     print("Confusion Matrix:")
     print("      Real  Syn  Tamp")
