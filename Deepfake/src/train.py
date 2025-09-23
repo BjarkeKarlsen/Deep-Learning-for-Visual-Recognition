@@ -10,11 +10,16 @@ from config import Config
 from .dataset_manager import SIDDatasetManager
 from .dataset import SIDDataset
 from .model import SimpleCNN
+<<<<<<< HEAD
+=======
+from .utils import print_gpu_info, set_seed
+>>>>>>> main
 from .visualize import plot_training_curves
 from .utils.logger import SidLogger as SidLogger
 from .utils.model_manager import save_training_history
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+<<<<<<< HEAD
 
 def train(logger: SidLogger, cfg: Config):
     device = torch.device(cfg.training.device)
@@ -25,6 +30,25 @@ def train(logger: SidLogger, cfg: Config):
                                 use_disk_cache=cfg.data.use_disk_cache, 
                                 use_streaming=cfg.data.use_streaming)                             
 
+=======
+
+def train(cfg: Config):
+    set_seed(cfg.training.seed)
+    device = torch.device(cfg.training.device)
+
+    print("="*60)
+    print("TRAINING MODE")
+    print("="*60)
+    print_gpu_info(device)
+    print(f"Train samples: {cfg.data.train_samples}, Val samples: {cfg.data.val_samples}")
+    print(f"Batch size: {cfg.loader.batch_size}, Epochs: {cfg.training.epochs}")
+    print("="*60)
+
+    manager = SIDDatasetManager(dataset_name=cfg.data.dataset_name, 
+                                use_disk_cache=cfg.data.use_disk_cache, 
+                                use_streaming=cfg.data.use_streaming)                             
+
+>>>>>>> main
     train_ds, val_ds, _ = manager.get_splits(
         train_max=cfg.data.train_samples, 
         val_max=cfg.data.val_samples, test_max=0)
@@ -122,13 +146,26 @@ def train(logger: SidLogger, cfg: Config):
             best_val_acc = val_acc
             os.makedirs(os.path.dirname(cfg.paths.model_path), exist_ok=True)
             torch.save(model.state_dict(), cfg.paths.model_path)
+<<<<<<< HEAD
             logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
+=======
+            print(f"Saved best model (val_acc: {val_acc:.1f}%)")
+>>>>>>> main
 
     logger.log_training_complete(total_time=None, best_metric=best_val_acc, best_epoch=None)
 
+<<<<<<< HEAD
     save_training_history(cfg.paths.results_dir, history, history_file='training_history.json')
 
     plot_training_curves(history)
     logger.log_training_complete(total_time=None, best_metric=best_val_acc, best_epoch=None)
     
     
+=======
+    os.makedirs(cfg.paths.results_dir, exist_ok=True)
+    with open(os.path.join(cfg.paths.results_dir, 'training_history.json'), 'w') as f:
+        json.dump(history, f, indent=2)
+
+    plot_training_curves(history)
+    print(f"Saved training history to {cfg.paths.results_dir}/training_history.json")
+>>>>>>> main

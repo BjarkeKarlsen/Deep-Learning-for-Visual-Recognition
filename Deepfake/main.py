@@ -3,6 +3,7 @@
 import os
 import argparse
 
+from src.utils import load_config
 from src.evaluate import evaluate
 from src.train import train
 from src.utils.seed_mananger import SeedManager
@@ -15,6 +16,7 @@ def main():
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
     args = parser.parse_args()
     
+<<<<<<< HEAD
     seed_manager = SeedManager()
     seed_manager.set_seed(42)
     
@@ -24,6 +26,18 @@ def main():
         train(SidLogger('training'), cfg)
     elif args.eval:
         evaluate(SidLogger('evaluation'), cfg)
+=======
+    cfg = load_config()
+    # ensure results & logging dirs exist
+    os.makedirs(cfg.paths.results_dir, exist_ok=True)
+    if cfg.paths.logging_dir:
+        os.makedirs(cfg.paths.logging_dir, exist_ok=True)
+
+    if args.train:
+        train(cfg)
+    elif args.eval:
+        evaluate(cfg)
+>>>>>>> main
     else:
         print("Please specify --train or --eval")
         parser.print_help()
