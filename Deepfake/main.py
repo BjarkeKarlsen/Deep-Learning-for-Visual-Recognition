@@ -3,10 +3,9 @@
 import os
 import argparse
 
-from src.utils import load_config
 from src.evaluate import evaluate
 from src.train import train
-from src.utils.seed_mananger import SeedManager
+from src.utils.seed_manager import SeedManager
 from src.utils.logger import SidLogger as SidLogger
 from src.utils.config_loader import ConfigLoader
 
@@ -19,7 +18,8 @@ def main():
     seed_manager = SeedManager()
     seed_manager.set_seed(42)
     
-    cfg = ConfigLoader()
+    loader = ConfigLoader()
+    cfg = loader.get_config()
 
     if args.train:
         train(SidLogger('training'), cfg)

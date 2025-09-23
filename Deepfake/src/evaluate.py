@@ -21,7 +21,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     device = torch.device(cfg.training.device)
 
     # Log evaluation configuration
-    logger.log_evaluation_config(cfg.to_dict())
+    logger.log_evaluation_config(cfg)
 
     logger.info("=" * 60)
     logger.info("EVALUATION MODE")
@@ -39,7 +39,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     test_loader = DataLoader(
         SIDDataset(
             test_ds,
-            image_size=cfg.model.image_size,
+            image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
             device=device
@@ -82,7 +82,7 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
-    logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names.values()))
+    logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
 
     # Save raw results JSON
     results = {

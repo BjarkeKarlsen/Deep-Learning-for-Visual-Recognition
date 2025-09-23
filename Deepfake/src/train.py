@@ -35,7 +35,7 @@ def train(logger: SidLogger, cfg: Config):
     train_loader = DataLoader(
         SIDDataset(
             train_ds,
-            image_size=cfg.model.image_size,
+            image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
             device=device
@@ -48,7 +48,7 @@ def train(logger: SidLogger, cfg: Config):
     val_loader = DataLoader(
         SIDDataset(
             val_ds,
-            image_size=cfg.model.image_size,
+            image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
             device=device
@@ -118,7 +118,6 @@ def train(logger: SidLogger, cfg: Config):
             train_acc=train_acc, 
             val_loss=avg_val_loss, 
             val_acc=val_acc, 
-            learning_rate=cfg.training.learning_rate
         )
 
         if val_acc > best_val_acc:

@@ -5,8 +5,8 @@ import seaborn as sns
 def plot_confusion_matrix(cm, class_names, save_path='results/confusion_matrix.png'):
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=class_names.values(),
-                yticklabels=class_names.values())
+                xticklabels=class_names,
+                yticklabels=class_names)
     plt.title('Confusion Matrix', fontsize=16)
     plt.ylabel('True Label', fontsize=12)
     plt.xlabel('Predicted Label', fontsize=12)
