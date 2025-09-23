@@ -21,8 +21,8 @@ class LoaderConfig:
 
 @dataclass
 class ModelConfig:
-    num_classes:    int           = 3
-    class_names:   dict          = field(default_factory=lambda: {0: 'Real', 1: 'Synthetic', 2: 'Tampered'})
+    class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
+    num_classes:    int           = class_names.__len__()
     image_size:     int           = 512
     normalize_mean: List[float]   = field(default_factory=lambda: [0.485, 0.456, 0.406])
     normalize_std:  List[float]   = field(default_factory=lambda: [0.229, 0.224, 0.225])
