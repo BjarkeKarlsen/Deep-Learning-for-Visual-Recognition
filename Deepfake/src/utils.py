@@ -1,7 +1,21 @@
-import random
+import random, os
+import torch
 
 import numpy as np
-import torch
+
+from omegaconf import OmegaConf
+from config import Config
+
+def load_config(config_path: str = "config.yaml") -> Config:
+    base = OmegaConf.structured(Config)
+    if os.path.exists(config_path):
+        overrides = OmegaConf.load(config_path)
+        cfg = OmegaConf.merge(base, overrides)
+    else:
+        cfg = base
+    # auto detect device
+    cfg.training.device = "cuda" if torch.cuda.is_available() else "cpu"
+    return cfg
 
 def set_seed(seed=42):
     random.seed(seed)
