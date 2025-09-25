@@ -96,7 +96,15 @@ def evaluate(logger: SidLogger, cfg: Config):
     save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
 
     logger.info("Generating visualizations...")
-    plot_confusion_matrix(cm, cfg.model.class_names)
-    plot_classification_metrics(report_dict)
+    plot_confusion_matrix(
+        cm,
+        cfg.model.class_names,
+        output_dir=cfg.paths.results_dir,
+    )
+    plot_classification_metrics(
+        report_dict,
+        class_names=cfg.model.class_names,
+        output_dir=cfg.paths.results_dir,
+    )
 
     logger.info("Evaluation complete.")

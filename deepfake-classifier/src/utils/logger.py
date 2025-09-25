@@ -132,12 +132,27 @@ class SidLogger:
     def log_best_model(self, epoch: int, metric: str, value: float):
         self.logger.info(f"New best model at epoch {epoch+1}: {metric}={value:.4f}")
 
-    def log_training_complete(self, total_time: float, best_metric: float, best_epoch: int):
+    def log_training_complete(
+        self,
+        *,
+        total_time: Optional[float],
+        best_metric: Optional[float],
+        best_epoch: Optional[int],
+    ):
         self.logger.info("=" * 60)
         self.logger.info("TRAINING COMPLETE")
         self.logger.info("=" * 60)
-        self.logger.info(f"Total time: {total_time:.2f}s ({total_time/60:.2f}m)")
-        self.logger.info(f"Best {best_metric:.4f} at epoch {best_epoch+1}")
+        if total_time is not None:
+            self.logger.info(
+                f"Total time: {total_time:.2f}s ({total_time/60:.2f}m)"
+            )
+        else:
+            self.logger.info("Total time: n/a")
+
+        if best_metric is not None and best_epoch is not None:
+            self.logger.info(f"Best metric {best_metric:.4f} at epoch {best_epoch+1}")
+        else:
+            self.logger.info("Best metric: n/a")
         self.logger.info("=" * 60)
 
     def log_classification_report(self, report: Dict[str, Any]):

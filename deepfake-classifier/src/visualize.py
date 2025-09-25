@@ -1,8 +1,22 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
 import seaborn as sns
 
-def plot_confusion_matrix(cm, class_names, save_path='results/confusion_matrix.png'):
+
+def _resolve_path(save_path, output_dir, default_filename):
+    """Build the final path using the provided save_path or output_dir."""
+    if save_path:
+        return Path(save_path)
+    if output_dir:
+        return Path(output_dir) / default_filename
+    return Path("results") / default_filename
+
+
+def plot_confusion_matrix(cm, class_names, *, save_path=None, output_dir=None):
+    path = _resolve_path(save_path, output_dir, "confusion_matrix.png")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=class_names,
@@ -11,12 +25,16 @@ def plot_confusion_matrix(cm, class_names, save_path='results/confusion_matrix.p
     plt.ylabel('True Label', fontsize=12)
     plt.xlabel('Predicted Label', fontsize=12)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=100, bbox_inches='tight')
+    plt.savefig(path, dpi=100, bbox_inches='tight')
     plt.close()
-    print(f"Saved confusion matrix to {save_path}")
+    print(f"Saved confusion matrix to {path}")
 
-def plot_classification_metrics(report, save_path='results/metrics_barplot.png'):
-    classes = ['Real', 'Synthetic', 'Tampered']
+
+def plot_classification_metrics(report, *, class_names, save_path=None, output_dir=None):
+    path = _resolve_path(save_path, output_dir, "metrics_barplot.png")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    classes = list(class_names)
     metrics = ['precision', 'recall', 'f1-score']
 
     values = {metric: [] for metric in metrics}
@@ -48,11 +66,15 @@ def plot_classification_metrics(report, save_path='results/metrics_barplot.png')
     ax.grid(axis='y', alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(save_path, dpi=100, bbox_inches='tight')
+    plt.savefig(path, dpi=100, bbox_inches='tight')
     plt.close()
-    print(f"Saved metrics plot to {save_path}")
+    print(f"Saved metrics plot to {path}")
 
-def plot_training_curves(history, save_path='results/training_curves.png'):
+
+def plot_training_curves(history, *, save_path=None, output_dir=None):
+    path = _resolve_path(save_path, output_dir, "training_curves.png")
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     epochs = range(1, len(history['train_loss']) + 1)
@@ -75,6 +97,6 @@ def plot_training_curves(history, save_path='results/training_curves.png'):
     ax2.legend()
 
     plt.tight_layout()
-    plt.savefig(save_path, dpi=100, bbox_inches='tight')
+    plt.savefig(path, dpi=100, bbox_inches='tight')
     plt.close()
-    print(f"Saved training curves to {save_path}")
+    print(f"Saved training curves to {path}")
