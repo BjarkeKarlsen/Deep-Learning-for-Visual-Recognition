@@ -5,6 +5,7 @@ from typing import List, Optional
 @dataclass
 class DataConfig:
     dataset_name:   str  = "saberzl/SID_Set"
+    image_size:  int  = 512
     train_samples:  int  = 10
     val_samples:    int  = 10
     test_samples:   int  = 10
@@ -21,11 +22,14 @@ class LoaderConfig:
 
 @dataclass
 class ModelConfig:
-    num_classes:    int           = 3
-    class_names:   dict          = field(default_factory=lambda: {0: 'Real', 1: 'Synthetic', 2: 'Tampered'})
-    image_size:     int           = 512
+    class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
+    num_classes: int = field(init=False)
     normalize_mean: List[float]   = field(default_factory=lambda: [0.485, 0.456, 0.406])
     normalize_std:  List[float]   = field(default_factory=lambda: [0.229, 0.224, 0.225])
+
+    def __post_init__(self):
+            # Compute num_classes based on the length of class_names
+            self.num_classes = len(self.class_names)
 
 @dataclass
 class TrainingConfig:

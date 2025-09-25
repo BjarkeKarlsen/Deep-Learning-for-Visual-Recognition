@@ -3,9 +3,11 @@
 import os
 import argparse
 
-from src.utils import load_config
 from src.evaluate import evaluate
 from src.train import train
+from src.utils.seed_manager import SeedManager
+from src.utils.logger import SidLogger as SidLogger
+from src.utils.config_loader import ConfigLoader
 
 def main():
     parser = argparse.ArgumentParser(description='Deepfake Detection CNN')
@@ -13,16 +15,16 @@ def main():
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
     args = parser.parse_args()
     
-    cfg = load_config()
-    # ensure results & logging dirs exist
-    os.makedirs(cfg.paths.results_dir, exist_ok=True)
-    if cfg.paths.logging_dir:
-        os.makedirs(cfg.paths.logging_dir, exist_ok=True)
+    seed_manager = SeedManager()
+    seed_manager.set_seed(42)
+    
+    loader = ConfigLoader()
+    cfg = loader.get_config()
 
     if args.train:
-        train(cfg)
+        train(SidLogger('training'), cfg)
     elif args.eval:
-        evaluate(cfg)
+        evaluate(SidLogger('evaluation'), cfg)
     else:
         print("Please specify --train or --eval")
         parser.print_help()

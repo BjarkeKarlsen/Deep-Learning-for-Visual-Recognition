@@ -8,24 +8,21 @@ from tqdm import tqdm
 from config import Config
 
 from .dataset_manager import SIDDatasetManager
+from config import Config
+
+from .dataset_manager import SIDDatasetManager
 from .dataset import SIDDataset
 from .model import SimpleCNN
-from .utils import print_gpu_info, set_seed
 from .visualize import plot_training_curves
+from .utils.logger import SidLogger as SidLogger
+from .utils.model_manager import save_training_history
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def train(cfg: Config):
-    set_seed(cfg.training.seed)
+def train(logger: SidLogger, cfg: Config):
     device = torch.device(cfg.training.device)
 
-    print("="*60)
-    print("TRAINING MODE")
-    print("="*60)
-    print_gpu_info(device)
-    print(f"Train samples: {cfg.data.train_samples}, Val samples: {cfg.data.val_samples}")
-    print(f"Batch size: {cfg.loader.batch_size}, Epochs: {cfg.training.epochs}")
-    print("="*60)
+    logger.log_training_config(cfg)
 
     manager = SIDDatasetManager(dataset_name=cfg.data.dataset_name, 
                                 use_disk_cache=cfg.data.use_disk_cache, 
@@ -38,7 +35,7 @@ def train(cfg: Config):
     train_loader = DataLoader(
         SIDDataset(
             train_ds,
-            image_size=cfg.model.image_size,
+            image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
             device=device
@@ -51,7 +48,7 @@ def train(cfg: Config):
     val_loader = DataLoader(
         SIDDataset(
             val_ds,
-            image_size=cfg.model.image_size,
+            image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
             device=device
@@ -114,21 +111,26 @@ def train(cfg: Config):
         history['train_acc'].append(train_acc)
         history['val_loss'].append(avg_val_loss)
         history['val_acc'].append(val_acc)
-
-        print(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, "
-              f"Train Acc: {train_acc:.1f}%, Val Acc: {val_acc:.1f}%")
+        
+        logger.log_epoch_results(
+            epoch, 
+            train_loss=avg_train_loss, 
+            train_acc=train_acc, 
+            val_loss=avg_val_loss, 
+            val_acc=val_acc, 
+        )
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             os.makedirs(os.path.dirname(cfg.paths.model_path), exist_ok=True)
             torch.save(model.state_dict(), cfg.paths.model_path)
-            print(f"Saved best model (val_acc: {val_acc:.1f}%)")
+            logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
-    print(f"\nTraining complete! Best validation: {best_val_acc:.1f}%")
+    logger.log_training_complete(total_time=None, best_metric=best_val_acc, best_epoch=None)
 
-    os.makedirs(cfg.paths.results_dir, exist_ok=True)
-    with open(os.path.join(cfg.paths.results_dir, 'training_history.json'), 'w') as f:
-        json.dump(history, f, indent=2)
+    save_training_history(cfg.paths.results_dir, history, history_file='training_history.json')
 
     plot_training_curves(history)
-    print(f"Saved training history to {cfg.paths.results_dir}/training_history.json")
+    logger.log_training_complete(total_time=None, best_metric=best_val_acc, best_epoch=None)
+    
+    
