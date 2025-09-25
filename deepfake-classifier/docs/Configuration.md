@@ -1,83 +1,123 @@
 # CONFIGURATION GUIDE
 
-This document explains how **`config.py`** and **`config.yaml`** work together to control all aspects of the project.
+This document explains how the configuration system is organized after the refactor.
 
 ***
 
-## 1. config.py
+## 1. Schema (`src/config/schema.py`)
 
-Defines the schema of all configurable settings using Python dataclasses. There are five sections:
+All configuration sections are defined with Python dataclasses:
 
 ```python
-# config.py
+from dataclasses import dataclass, field
+from typing import List, Optional
+
 
 @dataclass
 class DataConfig:
-    dataset_name:   str  = "saberzl/SID_Set"
-    train_samples:  int  = 10
-    val_samples:    int  = 10
-    test_samples:   int  = 10
-    use_streaming:  bool = True
+    dataset_name: str = "saberzl/SID_Set"
+    image_size: int = 512
+    train_samples: int = 10
+    val_samples: int = 10
+    test_samples: int = 10
+    use_streaming: bool = True
     use_disk_cache: bool = True
+
 
 @dataclass
 class LoaderConfig:
-    batch_size:    int  = 4
+    batch_size: int = 4
     shuffle_train: bool = True
-    shuffle_val:   bool = False
-    shuffle_test:  bool = False
-    num_workers:   int  = 4
+    shuffle_val: bool = False
+    shuffle_test: bool = False
+    num_workers: int = 4
+
 
 @dataclass
 class ModelConfig:
-    num_classes:   int          = 3
-    class_names:   dict         = field(default_factory=lambda: {0:'Real',1:'Synthetic',2:'Tampered'})
-    image_size:    int          = 512
-    normalize_mean: List[float] = field(default_factory=lambda: [0.485,0.456,0.406])
-    normalize_std:  List[float] = field(default_factory=lambda: [0.229,0.224,0.225])
+    class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
+    num_classes: int = field(init=False)
+    normalize_mean: List[float] = field(default_factory=lambda: [0.485, 0.456, 0.406])
+    normalize_std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
+
+    def __post_init__(self) -> None:
+        self.num_classes = len(self.class_names)
+
 
 @dataclass
 class TrainingConfig:
-    epochs:        int    = 100
-    learning_rate: float  = 0.001
-    seed:          int    = 42
-    device:        str    = "cpu"   # auto-set at runtime
+    epochs: int = 100
+    learning_rate: float = 0.001
+    seed: int = 42
+    device: str = "cpu"  # auto-filled at runtime
+
 
 @dataclass
 class PathsConfig:
-    model_path:   str           = "models/best_model.pth"
-    results_dir:  str           = "results"
-    history_file: str           = "training_history.json"
-    logging_dir:  Optional[str] = None
+    model_path: str = "models/best_model.pth"
+    results_dir: str = "results"
+    history_file: str = "training_history.json"
+    logging_dir: Optional[str] = None
+
 
 @dataclass
 class Config:
-    data:     DataConfig     = field(default_factory=DataConfig)
-    loader:   LoaderConfig   = field(default_factory=LoaderConfig)
-    model:    ModelConfig    = field(default_factory=ModelConfig)
+    data: DataConfig = field(default_factory=DataConfig)
+    loader: LoaderConfig = field(default_factory=LoaderConfig)
+    model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
-    paths:    PathsConfig    = field(default_factory=PathsConfig)
+    paths: PathsConfig = field(default_factory=PathsConfig)
 ```
 
-- **DataConfig**: Dataset name, sample limits, caching behavior.
-- **LoaderConfig**: DataLoader parameters (batch size, shuffle flags, workers).
-- **ModelConfig**: Network parameters and normalization constants.
-- **TrainingConfig**: Training loop hyperparameters and random seed.
-- **PathsConfig**: File paths for model checkpoints, results, logging.
-- **Config**: Root object aggregating all sections.
+The dataclasses provide types, defaults, and derived values (for example, `ModelConfig.num_classes`).
 
 ***
 
-## 2. config.yaml
+## 2. Default values (`src/config/default.yaml`)
 
-A YAML file to **override** any defaults from `config.py` without editing code. Place it in the project root:
+A YAML file mirrors the dataclass structure and provides the baseline configuration shipped with the repository. A shortened view:
 
 ```yaml
-# config.yaml
+# src/config/default.yaml
 
 data:
+  dataset_name: saberzl/SID_Set
+  image_size: 512
+  train_samples: 10
+  val_samples: 10
+  test_samples: 10
+  use_streaming: true
+  use_disk_cache: true
+
+loader:
+  batch_size: 4
+  shuffle_train: true
+  shuffle_val: false
+  shuffle_test: false
+  num_workers: 4
+
+... (model, training, paths)
+```
+
+This file is never modified at runtime; it simply documents the shipped defaults.
+
+***
+
+## 3. User overrides (`config.yaml`)
+
+Place your overrides in the repository root `config.yaml`. It already includes every available setting with the project’s preferred values, so you can edit directly without hunting for missing keys:
+
+```yaml
+# config.yaml (example)
+
+data:
+  dataset_name: saberzl/SID_Set
+  image_size: 512
   train_samples: 100
   val_samples: 20
+  test_samples: 10
+  use_streaming: true
+  use_disk_cache: true
 
 loader:
   batch_size: 8
@@ -86,84 +126,48 @@ loader:
   shuffle_test: false
   num_workers: 4
 
-training:
-  epochs: 50
-  learning_rate: 0.0005
-
-paths:
-  logging_dir: "logs/exp1"
+... (model, training, paths)
 ```
 
-- Keys correspond to sections in `Config`.  
-- Omitted keys use the defaults from `config.py`.  
-- Any valid YAML boolean, string, number is parsed into the typed config.
+Any key you omit falls back to the default YAML (and ultimately to the dataclass defaults if the key is missing there as well).
 
 ***
 
-## 3. Loading Configuration
+## 4. Loading configuration (`src/utils/config_loader.py`)
 
-Use `OmegaConf` to merge defaults and overrides:
-
-```python
-from omegaconf import OmegaConf
-from config import Config
-
-def load_config(path="config.yaml") -> Config:
-    base = OmegaConf.structured(Config)
-    if os.path.exists(path):
-        overrides = OmegaConf.load(path)
-        cfg = OmegaConf.merge(base, overrides)
-    else:
-        cfg = base
-    # auto-detect device
-    import torch
-    cfg.training.device = "cuda" if torch.cuda.is_available() else "cpu"
-    return cfg
-```
-
-- **Structured Config** ensures type safety.  
-- **Merge** applies YAML overrides on top of dataclass defaults.  
-- **Device detection** sets `cfg.training.device` at runtime.
-
-***
-
-## 4. Using the Config
-
-Pass the loaded `cfg` everywhere:
+`ConfigLoader` handles the merge flow and resolves relative paths against the project root:
 
 ```python
-cfg = load_config("config.yaml")
+from src.utils.config_loader import ConfigLoader
 
-# Access example:
-print(cfg.data.train_samples)
-print(cfg.loader.batch_size)
-print(cfg.model.image_size)
-print(cfg.training.epochs)
-print(cfg.paths.results_dir)
+loader = ConfigLoader()            # looks for config.yaml in the repo root
+cfg = loader.get_config()          # DictConfig backed by the dataclasses
 ```
 
-In training script:
+Key behaviors:
 
-```python
-train_loader = DataLoader(
-    SIDDataset(...),
-    batch_size=cfg.loader.batch_size,
-    shuffle=cfg.loader.shuffle_train,
-    num_workers=cfg.loader.num_workers,
-)
+- Defaults: `OmegaConf.structured(Config)` + `src/config/default.yaml`
+- Overrides: merges `config.yaml` if it exists (you can pass a custom path)
+- Device detection: automatically sets `cfg.training.device` to `cuda` when available
+- Path normalization: `cfg.paths.model_path` and `cfg.paths.results_dir` become absolute paths anchored to the repository, so running scripts from other directories works seamlessly
+- Directory preparation: results/logging directories are created on load
+
+The module also exposes a small CLI helper:
+
+```bash
+# View the merged configuration
+python -m src.utils.config_loader
+
+# Write the default template to disk
+python -m src.utils.config_loader --dump-default --output config.template.yaml
+# Use --force if you need to overwrite an existing file
 ```
 
-In model creation:
+With this layout the configuration story is:
 
-```python
-model = SimpleCNN(num_classes=cfg.model.num_classes).to(cfg.training.device)
-```
+1. Dataclasses define structure and validation
+2. `src/config/default.yaml` documents shipped defaults
+3. `config.yaml` contains your experiment-specific overrides
+4. `ConfigLoader` ties it all together at runtime
 
-Paths usage:
-
-```python
-os.makedirs(cfg.paths.results_dir, exist_ok=True)
-torch.save(model.state_dict(), cfg.paths.model_path)
-```
-
-This unified approach centralizes all parameters, makes experiments reproducible, and keeps code clean.
+This separation keeps defaults discoverable, makes overrides explicit, and removes the need to run scripts from the repository root.

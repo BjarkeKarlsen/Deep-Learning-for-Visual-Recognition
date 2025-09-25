@@ -14,7 +14,7 @@ from .dataset_manager import SIDDatasetManager
 from .utils.logger import SidLogger
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import Config
+from src.config import Config
 
 
 def evaluate(logger: SidLogger, cfg: Config):

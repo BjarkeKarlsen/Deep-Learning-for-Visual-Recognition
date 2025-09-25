@@ -13,12 +13,14 @@ def main():
     parser = argparse.ArgumentParser(description='Deepfake Detection CNN')
     parser.add_argument('--train', action='store_true', help='Train the model')
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
+    parser.add_argument('--config', type=str, default=None,
+                        help='Path to config YAML (defaults to repo config.yaml)')
     args = parser.parse_args()
     
     seed_manager = SeedManager()
     seed_manager.set_seed(42)
     
-    loader = ConfigLoader()
+    loader = ConfigLoader(config_path=args.config)
     cfg = loader.get_config()
 
     if args.train:

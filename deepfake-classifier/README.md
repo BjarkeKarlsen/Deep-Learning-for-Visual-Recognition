@@ -17,29 +17,20 @@ pip install -r requirements.txt
 ```
 
 ## Configuration
-Edit `config.yaml` to override any defaults. Example:
+All defaults live in `src/config/default.yaml`. Edit the repository-level `config.yaml` to override anything — it now lists every available option.
 
-```yaml
-data:
-  train_samples: 100
-  val_samples: 20
+Useful commands:
 
-loader:
-  batch_size: 8
-  shuffle_train: true
-  num_workers: 4
+```bash
+# Inspect the merged config (defaults + overrides)
+python -m src.utils.config_loader
 
-training:
-  epochs: 50
-  learning_rate: 0.0005
-
-paths:
-  logging_dir: "logs/exp1"
+# Write a fresh copy of the default template
+python -m src.utils.config_loader --dump-default --output my-config.yaml
+# Add --force to overwrite an existing file
 ```
 
-The top‐level keys mirror `config.py` dataclasses: `data`, `loader`, `model`, `training`, `paths`.
-
-Results and model weights will be saved under paths from `cfg.paths`.
+The configuration sections map directly to the dataclasses in `src/config/schema.py` (`data`, `loader`, `model`, `training`, `paths`). Results and weights paths are resolved relative to the project root unless you provide absolute paths.
 
 
 ***
@@ -47,7 +38,7 @@ Results and model weights will be saved under paths from `cfg.paths`.
 ## Run
 
 ```bash
-# Train model
+# Train model (optional: --config path/to/experiment.yaml)
 python main.py --train
 
 # Evaluate model
