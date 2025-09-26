@@ -16,7 +16,7 @@ from src.utils.model_manager import check_model_exists, save_training_history
 from src.utils.logger import SidLogger
 
 from .dataset import SIDClassificationDataset
-from .model import SimpleCNN
+from .model import BaselineClassifier
 
 
 def evaluate(logger: SidLogger, cfg: Config):
@@ -56,7 +56,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     )
 
     # Load model
-    model = SimpleCNN(num_classes=cfg.model.num_classes).to(device)
+    model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     model.load_state_dict(torch.load(cfg.paths.model_path, map_location=device))
     model.eval()
 

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from src.common.dataset_manager import SIDDatasetManager
 from src.common.visualize import plot_segmentation_curves
 from src.segmentation.dataset import TamperedSegmentationDataset
-from src.segmentation.model import SimpleUNet
+from src.segmentation.model import TamperSegmentationModel
 from src.utils.logger import SidLogger
 from src.utils.model_manager import save_training_history
 from src.config import Config
@@ -72,7 +72,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     val_loader = prepare_dataloader(val_ds, cfg, shuffle=False)
 
-    model = SimpleUNet(in_channels=3, out_channels=1).to(device)
+    model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     # Binary tamper vs. background segmentation, so we optimise BCE on logits.
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)

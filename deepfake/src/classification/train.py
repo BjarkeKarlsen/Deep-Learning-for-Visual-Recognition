@@ -12,7 +12,7 @@ from src.utils.logger import SidLogger as SidLogger
 from src.utils.model_manager import save_training_history
 
 from .dataset import SIDClassificationDataset
-from .model import SimpleCNN
+from .model import BaselineClassifier
 
 
 def train(logger: SidLogger, cfg: Config):
@@ -53,7 +53,7 @@ def train(logger: SidLogger, cfg: Config):
         num_workers=cfg.loader.num_workers
     )
 
-    model = SimpleCNN(num_classes=cfg.model.num_classes).to(device)
+    model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
 

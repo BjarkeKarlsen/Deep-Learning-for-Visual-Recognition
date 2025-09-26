@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src.common.dataset_manager import SIDDatasetManager
 from src.segmentation.dataset import TamperedSegmentationDataset
-from src.segmentation.model import SimpleUNet
+from src.segmentation.model import TamperSegmentationModel
 from src.utils.logger import SidLogger
 from src.utils.model_manager import check_model_exists, save_training_history
 from src.config import Config
@@ -73,7 +73,7 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     if test_loader is None:
         raise RuntimeError("No tampered samples with masks available for evaluation")
 
-    model = SimpleUNet(in_channels=3, out_channels=1).to(device)
+    model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     model.load_state_dict(torch.load(cfg.paths.model_path, map_location=device))
     model.eval()
 
