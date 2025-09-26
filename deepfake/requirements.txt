@@ -1,0 +1,10 @@
+torch
+torchvision
+datasets
+Pillow
+tqdm
+numpy
+scikit-learn
+matplotlib
+seaborn
+omegaconf
