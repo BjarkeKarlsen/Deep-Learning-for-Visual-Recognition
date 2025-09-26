@@ -37,15 +37,25 @@ class ConfigLoader:
         self._default_cfg = OmegaConf.to_container(default_cfg, resolve=False)
         cfg = OmegaConf.merge(base, defaults_yaml)
 
+        user_cfg = None
         if self.config_path:
             if not Path(self.config_path).is_file():
                 raise FileNotFoundError(f"Config file not found at {self.config_path}")
-            cfg = OmegaConf.merge(cfg, self._load_yaml(Path(self.config_path)))
+            user_cfg = self._load_yaml(Path(self.config_path))
+            cfg = OmegaConf.merge(cfg, user_cfg)
 
-        if _TORCH_AVAILABLE and torch.cuda.is_available():
-            cfg.training.device = "cuda"
-        else:
-            cfg.training.device = "cpu"
+        user_specified_device = False
+        if user_cfg is not None:
+            user_dict = OmegaConf.to_container(user_cfg, resolve=False)
+            training_cfg = user_dict.get("training") if isinstance(user_dict, dict) else None
+            if isinstance(training_cfg, dict) and "device" in training_cfg:
+                user_specified_device = True
+
+        if not user_specified_device:
+            if _TORCH_AVAILABLE and torch.cuda.is_available():
+                cfg.training.device = "cuda"
+            else:
+                cfg.training.device = "cpu"
         self._normalize_paths(cfg)
         return cfg
 

@@ -45,10 +45,15 @@ class SIDDatasetManager:
         # Default HF location
         return os.path.expanduser('~/.cache/huggingface/datasets')
 
-    def _cache_path(self, split: str) -> str:
-        """Generate cache path for custom splits within HF cache structure."""
+    def _cache_path(self, split: str, *, identifier: Optional[str] = None) -> str:
+        """Generate cache path scoped by dataset + split parameters."""
         hf_cache = self._get_hf_cache_dir()
-        return os.path.join(hf_cache, "custom_splits", "SID", f"{split}")
+        dataset_slug = self.dataset_name.replace("/", "__")
+        parts = [split]
+        if identifier:
+            parts.append(identifier)
+        cache_dir = os.path.join(hf_cache, "custom_splits", "SID", dataset_slug, "__".join(parts))
+        return cache_dir
 
     def load_dataset(self) -> Dict[str, Dataset]:
         """
@@ -131,12 +136,24 @@ class SIDDatasetManager:
         """
         Load (or derive) a split, optionally cache it in HF cache structure.
         """
-        path = self._cache_path(split)
+        id_components = [derive_from or split]
+        max_str = str(max_samples) if max_samples is not None else "all"
+        id_components.append(f"max{max_str}")
+        if start:
+            id_components.append(f"start{start}")
+        if self.use_streaming:
+            id_components.append("stream")
+        identifier = "__".join(id_components)
+
+        path = self._cache_path(split, identifier=identifier)
         
         # 1) Load from disk if cached (only for custom splits)
-        if (self.use_disk_cache and 
-            derive_from is not None and  # Only custom splits are cached
-            os.path.isdir(path) and os.listdir(path)):
+        if (
+            self.use_disk_cache
+            and derive_from is not None  # Only custom splits are cached
+            and os.path.isdir(path)
+            and os.listdir(path)
+        ):
             print(f"Loading {split} split from HF cache: {path}")
             return load_from_disk(path)
 
@@ -241,7 +258,12 @@ class SIDDatasetManager:
         if ds is None:
             return ds
 
-        cache_path = self._cache_path(cache_key)
+        id_components = [f"label{tampered_label}"]
+        if max_samples is not None:
+            id_components.append(f"max{max_samples}")
+        if self.use_streaming:
+            id_components.append("stream")
+        cache_path = self._cache_path(cache_key, identifier="__".join(id_components))
         if (
             self.use_disk_cache
             and os.path.isdir(cache_path)

@@ -29,18 +29,20 @@ def main():
     seed_value = getattr(cfg.training, "seed", None)
     SeedManager(seed_value if seed_value is not None else 42)
 
+    log_dir = cfg.paths.logging_dir or "logs"
+
     if args.train or args.eval:
         task = args.task
         if task == 'classification':
             if args.train:
-                classify_train(SidLogger('training'), cfg)
+                classify_train(SidLogger('training', log_dir=log_dir), cfg)
             if args.eval:
-                classify_evaluate(SidLogger('evaluation'), cfg)
+                classify_evaluate(SidLogger('evaluation', log_dir=log_dir), cfg)
         else:  # segmentation
             if args.train:
-                segment_train(SidLogger('segmentation-train'), cfg)
+                segment_train(SidLogger('segmentation-train', log_dir=log_dir), cfg)
             if args.eval:
-                segment_evaluate(SidLogger('segmentation-eval'), cfg)
+                segment_evaluate(SidLogger('segmentation-eval', log_dir=log_dir), cfg)
     else:
         print("Please specify --train or --eval")
         parser.print_help()
