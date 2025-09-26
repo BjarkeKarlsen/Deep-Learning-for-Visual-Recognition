@@ -41,6 +41,7 @@ def evaluate(logger: SidLogger, cfg: Config):
         train_max=0,
         val_max=0,
         test_max=cfg.data.test_samples,
+        test_offset=cfg.data.val_samples,
     )
 
     test_loader = DataLoader(
