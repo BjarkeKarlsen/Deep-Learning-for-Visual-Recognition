@@ -1,7 +1,8 @@
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.transforms.v2 import Compose, Normalize, Resize, ToDtype, ToImage
+from torchvision.transforms import InterpolationMode
+from torchvision.transforms.v2 import Compose, Grayscale, Normalize, Resize, ToDtype, ToImage
 
 
 class TamperedSegmentationDataset(Dataset):
@@ -41,7 +42,12 @@ class TamperedSegmentationDataset(Dataset):
 
         if mask_transform is None:
             self.mask_transform = Compose([
-                Resize((self.image_size, self.image_size), antialias=True),
+                Resize(
+                    (self.image_size, self.image_size),
+                    interpolation=InterpolationMode.NEAREST,
+                    antialias=False,
+                ),
+                Grayscale(num_output_channels=1),
                 ToImage(),
                 ToDtype(torch.float32, scale=True),
             ])

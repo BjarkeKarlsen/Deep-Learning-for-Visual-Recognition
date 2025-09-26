@@ -147,7 +147,11 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             torch.save(model.state_dict(), cfg.paths.model_path)
             logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
 
-    save_training_history(cfg.paths.results_dir, history, history_file="segmentation_history.json")
+    save_training_history(
+        cfg.paths.results_dir,
+        history,
+        history_file=cfg.paths.history_file,
+    )
     plot_segmentation_curves(history, output_dir=cfg.paths.results_dir)
     return {
         "best_dice": best_val_dice if best_val_dice is not None else float("nan"),

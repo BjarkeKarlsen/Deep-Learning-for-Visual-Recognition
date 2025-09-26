@@ -63,9 +63,9 @@ class SIDDatasetManager:
             )
 
             for split, ds in full.items():
-                if isinstance(ds, IterableDataset):
-                    # Materialise streaming splits so downstream code can rely on
-                    # random access semantics (len, indexing, shuffling).
+                if isinstance(ds, IterableDataset) and not self.use_streaming:
+                    # Non-streaming iterable datasets are materialised once so
+                    # downstream code can rely on random-access operations.
                     records = list(ds)
                     ds = Dataset.from_list(records)
                 self._cached_splits[split] = ds

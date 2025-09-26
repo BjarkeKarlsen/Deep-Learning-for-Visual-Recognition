@@ -136,7 +136,11 @@ def train(logger: SidLogger, cfg: Config):
         best_epoch=best_epoch,
     )
 
-    save_training_history(cfg.paths.results_dir, history, history_file='training_history.json')
+    save_training_history(
+        cfg.paths.results_dir,
+        history,
+        history_file=cfg.paths.history_file,
+    )
 
     plot_training_curves(history, output_dir=cfg.paths.results_dir)
 
