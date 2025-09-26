@@ -20,6 +20,7 @@ from .model import SimpleCNN
 
 
 def evaluate(logger: SidLogger, cfg: Config):
+    """Run classification inference and report accuracy/diagnostics."""
     device = torch.device(cfg.training.device)
 
     # Log evaluation configuration

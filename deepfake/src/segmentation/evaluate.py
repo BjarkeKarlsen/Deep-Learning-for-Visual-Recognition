@@ -15,8 +15,9 @@ from src.config import Config
 
 
 def dice_and_iou(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> Dict[str, torch.Tensor]:
+    """Compute dataset-level overlap metrics for binary tamper masks."""
     probs = torch.sigmoid(logits)
-    preds = (probs > 0.5).float()
+    preds = (probs > 0.5).float()  # default binary threshold for tamper vs. background
     targets = (targets > 0.5).float()
 
     intersection = (preds * targets).sum(dim=(1, 2, 3))
@@ -49,6 +50,7 @@ def prepare_dataloader(dataset, cfg: Config) -> DataLoader:
 
 
 def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
+    """Evaluate a trained U-Net and persist Dice/IoU summaries."""
     device = torch.device(cfg.training.device)
     logger.log_evaluation_config(cfg)
 

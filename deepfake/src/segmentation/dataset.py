@@ -47,7 +47,7 @@ class TamperedSegmentationDataset(Dataset):
                     interpolation=InterpolationMode.NEAREST,
                     antialias=False,
                 ),
-                Grayscale(num_output_channels=1),
+                Grayscale(num_output_channels=1),  # enforce single-channel masks for binary tamper detection
                 ToImage(),
                 ToDtype(torch.float32, scale=True),
             ])

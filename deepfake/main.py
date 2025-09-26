@@ -48,5 +48,5 @@ def main():
 if __name__ == "__main__":
     start_method = mp.get_start_method(allow_none=True)
     if start_method != "spawn":
-        mp.set_start_method("spawn", force=True)
+        mp.set_start_method("spawn", force=True)  # safe default across platforms when using PyTorch + multiprocessing
     main()

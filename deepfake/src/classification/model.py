@@ -1,6 +1,8 @@
 import torch.nn as nn
 
 class SimpleCNN(nn.Module):
+    """Compact classifier: 2 conv blocks + MLP head for quick baselines."""
+
     def __init__(self, num_classes=3):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 16, 3, padding=1)

@@ -44,11 +44,11 @@ class SIDDataset(Dataset):
             ])
         else:
             self.transform = transform
-            
+
         if transform_mask is None:
             self.transform_mask = Compose([
                 Resize((self.image_size, self.image_size), antialias=True),
-                Grayscale(num_output_channels=1), 
+                Grayscale(num_output_channels=1),  # keep masks compatible with segmentation outputs
                 ToImage(),
                 ToDtype(torch.float32, scale=True)
             ])
@@ -89,5 +89,7 @@ class SIDDataset(Dataset):
 
         sample = {"image": image, "label": label}
         if mask_tensor is not None:
+            # Classification still exposes a mask tensor—zeros when missing—so
+            # downstream utilities can treat both tasks uniformly.
             sample["mask"] = mask_tensor
         return sample

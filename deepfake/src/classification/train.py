@@ -14,7 +14,9 @@ from src.utils.model_manager import save_training_history
 from .dataset import SIDDataset
 from .model import SimpleCNN
 
+
 def train(logger: SidLogger, cfg: Config):
+    """Train the lightweight classifier on the configured SID subsets."""
     device = torch.device(cfg.training.device)
 
     logger.log_training_config(cfg)
@@ -98,6 +100,8 @@ def train(logger: SidLogger, cfg: Config):
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
 
+        # Guard against empty loaders (possible with tiny sample caps) so that
+        # downstream logging can handle the "nan" sentinel gracefully.
         train_acc = 100 * train_correct / train_total if train_total else float('nan')
         val_acc = 100 * val_correct / val_total if val_total else float('nan')
         avg_train_loss = train_loss / len(train_loader)

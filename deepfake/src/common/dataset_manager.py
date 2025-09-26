@@ -64,8 +64,9 @@ class SIDDatasetManager:
 
             for split, ds in full.items():
                 if isinstance(ds, IterableDataset) and not self.use_streaming:
-                    # Non-streaming iterable datasets are materialised once so
-                    # downstream code can rely on random-access operations.
+                    # Hugging Face sometimes returns iterables even for local
+                    # caches; materialise once so PyTorch-style random access
+                    # (len, indexing, shuffling) remains available downstream.
                     records = list(ds)
                     ds = Dataset.from_list(records)
                 self._cached_splits[split] = ds
@@ -299,6 +300,9 @@ class SIDDatasetManager:
             use_official_test=use_official_test,
         )
 
+        # Each segmentation subset keeps only samples where the selected label
+        # includes a tamper mask. This avoids wasting GPU time on negatives that
+        # cannot contribute to pixel-level supervision.
         train_ds = self._filter_segmentation_split(
             base_train,
             cache_key="train_tampered",

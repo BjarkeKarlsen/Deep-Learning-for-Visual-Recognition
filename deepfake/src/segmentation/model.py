@@ -16,7 +16,7 @@ def _conv_block(in_channels: int, out_channels: int, *, kernel_size: int = 3) ->
 
 
 class SimpleUNet(nn.Module):
-    """A lightweight U-Net suitable for 224x224 inputs."""
+    """Shallow U-Net: enough capacity for 224×224 masks without heavy compute."""
 
     def __init__(self, in_channels: int = 3, out_channels: int = 1, base_width: int = 32):
         super().__init__()

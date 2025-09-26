@@ -17,8 +17,9 @@ from src.config import Config
 
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+    """Measure overlap between predicted and ground-truth masks (Dice score)."""
     probs = torch.sigmoid(logits)
-    preds = (probs > 0.5).float()
+    preds = (probs > 0.5).float()  # threshold logits into binary tamper predictions
     targets = (targets > 0.5).float()
 
     intersection = (preds * targets).sum(dim=(1, 2, 3))
@@ -28,6 +29,7 @@ def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1
 
 
 def prepare_dataloader(dataset, cfg: Config, *, shuffle: bool) -> DataLoader:
+    """Wrap filtered HF splits with PyTorch loaders (or return None if empty)."""
     if dataset is None or len(dataset) == 0:
         return None
 
@@ -47,6 +49,7 @@ def prepare_dataloader(dataset, cfg: Config, *, shuffle: bool) -> DataLoader:
 
 
 def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
+    """Optimise the U-Net on tampered examples and log training history."""
     device = torch.device(cfg.training.device)
     logger.log_training_config(cfg)
 
@@ -70,6 +73,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     val_loader = prepare_dataloader(val_ds, cfg, shuffle=False)
 
     model = SimpleUNet(in_channels=3, out_channels=1).to(device)
+    # Binary tamper vs. background segmentation, so we optimise BCE on logits.
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
 
@@ -138,6 +142,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             f"Epoch {epoch+1}: val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
         )
 
+        # Dice better reflects overlap quality than raw loss, so we track it for
+        # early stopping. Fall back to train dice when validation data is absent.
         metric_to_compare = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
         if best_val_dice is None or metric_to_compare > best_val_dice:
             best_val_dice = metric_to_compare
