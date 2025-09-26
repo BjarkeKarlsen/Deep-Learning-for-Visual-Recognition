@@ -15,7 +15,7 @@ from src.common.visualize import (
 from src.utils.model_manager import check_model_exists, save_training_history
 from src.utils.logger import SidLogger
 
-from .dataset import SIDDataset
+from .dataset import SIDClassificationDataset
 from .model import SimpleCNN
 
 
@@ -40,7 +40,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     _, _, test_ds = manager.get_splits(test_max=cfg.data.test_samples)
 
     test_loader = DataLoader(
-        SIDDataset(
+        SIDClassificationDataset(
             test_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,

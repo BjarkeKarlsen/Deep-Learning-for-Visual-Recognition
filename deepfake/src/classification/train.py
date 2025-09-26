@@ -11,7 +11,7 @@ from src.common.visualize import plot_training_curves
 from src.utils.logger import SidLogger as SidLogger
 from src.utils.model_manager import save_training_history
 
-from .dataset import SIDDataset
+from .dataset import SIDClassificationDataset
 from .model import SimpleCNN
 
 
@@ -30,7 +30,7 @@ def train(logger: SidLogger, cfg: Config):
         val_max=cfg.data.val_samples, test_max=0)
     
     train_loader = DataLoader(
-        SIDDataset(
+        SIDClassificationDataset(
             train_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
@@ -42,7 +42,7 @@ def train(logger: SidLogger, cfg: Config):
     )
     
     val_loader = DataLoader(
-        SIDDataset(
+        SIDClassificationDataset(
             val_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,

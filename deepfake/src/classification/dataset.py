@@ -1,10 +1,11 @@
 import torch
+from torchvision.transforms import InterpolationMode
 from torchvision.transforms.v2 import Compose, Resize, Grayscale, Normalize, ToImage, ToDtype
 from PIL import Image
 from torch.utils.data import Dataset
     
 
-class SIDDataset(Dataset):
+class SIDClassificationDataset(Dataset):
     """
     Map-style dataset that standardises SID samples into tensors.
 
@@ -47,7 +48,10 @@ class SIDDataset(Dataset):
 
         if transform_mask is None:
             self.transform_mask = Compose([
-                Resize((self.image_size, self.image_size)),
+                Resize(
+                    (self.image_size, self.image_size),
+                    interpolation=InterpolationMode.NEAREST,
+                ),
                 Grayscale(num_output_channels=1),  # keep masks compatible with segmentation outputs
                 ToImage(),
                 ToDtype(torch.float32, scale=True)

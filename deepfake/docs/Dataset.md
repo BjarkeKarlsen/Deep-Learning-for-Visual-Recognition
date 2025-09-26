@@ -1,6 +1,6 @@
 # DATASET.md
 
-## SIDDataset
+## SIDClassificationDataset
 
 Custom PyTorch `Dataset` that adapts SID samples into tensors for the
 classification pipeline.
@@ -47,11 +47,11 @@ def __init__(
 ### Usage Example
 
 ```python
-from dataset import SIDDataset
+from dataset import SIDClassificationDataset
 from torch.utils.data import DataLoader
 
 # Assume train_ds is an HF Dataset
-train_dataset = SIDDataset(
+train_dataset = SIDClassificationDataset(
     train_ds,
     image_size=512,
     normalize_mean=[0.485, 0.456, 0.406],
