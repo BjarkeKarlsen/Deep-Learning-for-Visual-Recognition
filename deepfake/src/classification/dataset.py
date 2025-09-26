@@ -37,7 +37,7 @@ class SIDDataset(Dataset):
         if transform is None:
             self.transform = Compose([
                 self.to_rgb,
-                Resize((self.image_size, self.image_size), antialias=True),
+                Resize((self.image_size, self.image_size)),
                 ToImage(),
                 ToDtype(torch.float32, scale=True),
                 Normalize(mean=normalize_mean, std=normalize_std)
@@ -47,7 +47,7 @@ class SIDDataset(Dataset):
 
         if transform_mask is None:
             self.transform_mask = Compose([
-                Resize((self.image_size, self.image_size), antialias=True),
+                Resize((self.image_size, self.image_size)),
                 Grayscale(num_output_channels=1),  # keep masks compatible with segmentation outputs
                 ToImage(),
                 ToDtype(torch.float32, scale=True)

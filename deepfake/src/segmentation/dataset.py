@@ -32,7 +32,7 @@ class TamperedSegmentationDataset(Dataset):
         if transform is None:
             self.image_transform = Compose([
                 self._ensure_rgb,
-                Resize((self.image_size, self.image_size), antialias=True),
+                Resize((self.image_size, self.image_size)),
                 ToImage(),
                 ToDtype(torch.float32, scale=True),
                 Normalize(mean=normalize_mean, std=normalize_std),
@@ -45,7 +45,6 @@ class TamperedSegmentationDataset(Dataset):
                 Resize(
                     (self.image_size, self.image_size),
                     interpolation=InterpolationMode.NEAREST,
-                    antialias=False,
                 ),
                 Grayscale(num_output_channels=1),  # enforce single-channel masks for binary tamper detection
                 ToImage(),
