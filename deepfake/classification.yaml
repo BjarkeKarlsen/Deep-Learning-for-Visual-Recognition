@@ -8,7 +8,7 @@ data:
   use_disk_cache: true
 
 loader:
-  batch_size: 8
+  batch_size: 32
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
@@ -29,7 +29,7 @@ model:
     - 0.225
 
 training:
-  epochs: 100
+  epochs: 5
   learning_rate: 0.0005
   seed: 42
 

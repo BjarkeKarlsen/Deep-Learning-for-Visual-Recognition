@@ -1,10 +1,11 @@
 import os
 from itertools import islice
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from datasets import (
     Dataset,
     IterableDataset,
+    concatenate_datasets,
     load_dataset,
     load_from_disk,
 )
@@ -30,6 +31,105 @@ class SIDDatasetManager:
         self.use_disk_cache = use_disk_cache
         self.use_streaming = use_streaming
         self._cached_splits: Dict[str, Dataset] = {}
+
+    def _ensure_indexable_split(self, split: str) -> Dataset:
+        """Materialise streaming splits into map-style datasets when needed."""
+        ds = self._get_base_split(split)
+        if isinstance(ds, IterableDataset):
+            # Materialise entire split so downstream code can rely on len/index.
+            materialised = self._slice_split(ds, max_samples=None)
+            self._cached_splits[split] = materialised
+            return materialised
+        return ds
+
+    @staticmethod
+    def _compute_holdout_ranges(
+        *,
+        total_length: int,
+        holdout_start: int,
+        val_max: Optional[int],
+        derive_test: bool,
+        test_max: Optional[int],
+        test_offset: int,
+    ) -> Tuple[Tuple[int, int], Optional[Tuple[int, int]]]:
+        """Compute disjoint ranges for validation and test subsets."""
+
+        holdout_start = max(0, min(holdout_start, total_length))
+        available = max(0, total_length - holdout_start)
+        if available == 0:
+            empty_range = (holdout_start, holdout_start)
+            return empty_range, None
+
+        offset_reserved = min(available, max(0, test_offset) if derive_test else 0)
+        if derive_test and test_max is not None:
+            potential_after_offset = max(0, available - offset_reserved)
+            reserve_for_test_samples = min(test_max, potential_after_offset)
+        else:
+            reserve_for_test_samples = 0
+
+        reserve_for_test = min(available, offset_reserved + reserve_for_test_samples)
+
+        max_val_allowed = max(0, available - reserve_for_test)
+        if val_max is None:
+            val_len = max_val_allowed
+        else:
+            val_len = min(val_max, max_val_allowed)
+
+        available_after_val = max(0, available - val_len)
+        if derive_test and available_after_val > test_offset:
+            max_test_len = available_after_val - test_offset
+            if test_max is None:
+                test_len = max_test_len
+            else:
+                test_len = min(test_max, max_test_len)
+        else:
+            test_len = 0
+
+        val_start = holdout_start
+        val_end = val_start + val_len
+        test_start = min(total_length, val_end + max(0, test_offset))
+        test_end = min(total_length, test_start + test_len)
+
+        val_range = (val_start, val_end)
+        test_range = (test_start, test_end) if test_len > 0 else None
+        return val_range, test_range
+
+    @staticmethod
+    def _build_train_excluding(
+        ds: Dataset,
+        exclude_ranges: List[Tuple[int, int]],
+    ) -> Dataset:
+        """Return dataset with the provided ranges (inclusive/exclusive) removed."""
+
+        if not exclude_ranges:
+            return ds
+
+        length = len(ds)
+        normalised = []
+        for start, end in exclude_ranges:
+            if end <= start:
+                continue
+            normalised.append((max(0, start), min(length, end)))
+        if not normalised:
+            return ds
+
+        normalised.sort()
+        keep_ranges: List[Tuple[int, int]] = []
+        cursor = 0
+        for start, end in normalised:
+            if cursor < start:
+                keep_ranges.append((cursor, start))
+            cursor = max(cursor, end)
+        if cursor < length:
+            keep_ranges.append((cursor, length))
+
+        if not keep_ranges:
+            return ds.select([])
+
+        segments = [ds.select(range(start, end)) for start, end in keep_ranges]
+        if len(segments) == 1:
+            return segments[0]
+        return concatenate_datasets(segments)
 
     def _get_hf_cache_dir(self) -> str:
         """Get the HuggingFace cache directory being used."""
@@ -197,53 +297,128 @@ class SIDDatasetManager:
         Return (train, validation, test) datasets, all cached in HF locations.
         """
         splits = self.load_dataset()
+        has_validation = "validation" in splits
+        use_official_test_split = use_official_test and "test" in splits
 
-        # TRAIN - use HF caching for original split
-        if train_max is None:
-            train_ds = self._get_base_split("train")
+        # Prepare validation (and optional derived test) from its source split.
+        if has_validation:
+            needs_holdout_math = (val_max is None) or (not use_official_test_split)
+            if needs_holdout_math:
+                val_source = self._ensure_indexable_split("validation")
+                val_length = len(val_source)
+                val_range, validation_test_range = self._compute_holdout_ranges(
+                    total_length=val_length,
+                    holdout_start=0,
+                    val_max=val_max,
+                    derive_test=not use_official_test_split,
+                    test_max=test_max if not use_official_test_split else None,
+                    test_offset=test_offset,
+                )
+
+                val_start, val_end = val_range
+                val_len = max(0, val_end - val_start)
+
+                if val_start == 0 and val_len == val_length:
+                    val_ds = val_source
+                else:
+                    val_ds = self._load_or_cache_split(
+                        "validation_subset",
+                        max_samples=val_len,
+                        derive_from="validation",
+                        start=val_start,
+                    )
+
+                if not use_official_test_split:
+                    if validation_test_range is not None:
+                        test_start, test_end = validation_test_range
+                        test_len = max(0, test_end - test_start)
+                        test_ds = self._load_or_cache_split(
+                            "test_custom",
+                            max_samples=test_len,
+                            derive_from="validation",
+                            start=test_start,
+                        )
+                    else:
+                        test_ds = val_source.select([])
+                else:
+                    test_ds = None  # Filled later from official split.
+            else:
+                # Simple subset of validation; no need to materialise entire split.
+                val_ds = self._load_or_cache_split(
+                    "validation_subset",
+                    max_samples=val_max,
+                    derive_from="validation",
+                    start=0,
+                )
+                test_ds = None
+
+            # Training split: derived directly from HF train split.
+            if train_max is None:
+                train_ds = self._ensure_indexable_split("train")
+            else:
+                train_ds = self._load_or_cache_split(
+                    "train_subset", max_samples=train_max, derive_from="train"
+                )
+
         else:
-            train_ds = self._load_or_cache_split(
-                "train_subset", max_samples=train_max, derive_from="train"
+            # Derive validation/test from the training split tail.
+            train_indexable = self._ensure_indexable_split("train")
+            train_length = len(train_indexable)
+            holdout_start = max(0, train_length - val_offset)
+            val_range, test_range = self._compute_holdout_ranges(
+                total_length=train_length,
+                holdout_start=holdout_start,
+                val_max=val_max,
+                derive_test=not use_official_test_split,
+                test_max=test_max if not use_official_test_split else None,
+                test_offset=test_offset,
             )
 
-        # VALIDATION
-        if "validation" in splits and val_max is None:
-            val_ds = self._get_base_split("validation")
-        elif "validation" in splits:
+            val_start, val_end = val_range
+            val_len = max(0, val_end - val_start)
             val_ds = self._load_or_cache_split(
-                "validation_subset", max_samples=val_max, derive_from="validation"
-            )
-        else:
-            train_split = self._get_base_split("train")
-            try:
-                train_length = len(train_split)
-            except TypeError:
-                train_length = None
-
-            start_index = 0 if train_length is None else max(0, train_length - val_offset)
-            val_ds = self._load_or_cache_split(
-                split="validation_custom",
-                max_samples=val_max,
+                "validation_custom",
+                max_samples=val_len,
                 derive_from="train",
-                start=start_index
+                start=val_start,
             )
 
-        # TEST
-        if use_official_test and "test" in splits and test_max is None:
-            test_ds = self._get_base_split("test")
-        elif use_official_test and "test" in splits:
-            test_ds = self._load_or_cache_split(
-                "test_subset", max_samples=test_max, derive_from="test"
+            if not use_official_test_split:
+                if test_range is not None:
+                    test_start, test_end = test_range
+                    test_len = max(0, test_end - test_start)
+                    test_ds = self._load_or_cache_split(
+                        "test_custom",
+                        max_samples=test_len,
+                        derive_from="train",
+                        start=test_start,
+                    )
+                else:
+                    test_ds = train_indexable.select([])
+            else:
+                test_ds = None
+
+            exclude_ranges: List[Tuple[int, int]] = [val_range]
+            if test_range is not None:
+                exclude_ranges.append(test_range)
+
+            train_without_holdout = self._build_train_excluding(
+                train_indexable, exclude_ranges
             )
-        else:
-            base = "validation" if "validation" in splits else "train"
-            test_offset_actual = val_max if val_max is not None else test_offset
-            test_ds = self._load_or_cache_split(
-                split="test_custom",
-                max_samples=test_max,
-                derive_from=base,
-                start=test_offset_actual
-            )
+
+            if train_max is None:
+                train_ds = train_without_holdout
+            else:
+                train_ds = self._slice_split(train_without_holdout, max_samples=train_max)
+
+        # If requested, use the official test split (optionally sub-sampled).
+        if use_official_test_split:
+            if test_max is None:
+                test_ds = self._ensure_indexable_split("test")
+            else:
+                test_ds = self._load_or_cache_split(
+                    "test_subset", max_samples=test_max, derive_from="test"
+                )
 
         return train_ds, val_ds, test_ds
 

@@ -1,6 +1,6 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 256
+  image_size: 224
   train_samples: 10000
   val_samples: 1000
   test_samples: 1000
@@ -26,7 +26,7 @@ model:
     - 0.225
 
 training:
-  epochs: 100
+  epochs: 5
   learning_rate: 0.0003
   seed: 42
 
