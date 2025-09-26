@@ -3,6 +3,8 @@
 import os
 import argparse
 
+import torch.multiprocessing as mp
+
 from src.evaluate import evaluate
 from src.train import train
 from src.utils.seed_manager import SeedManager
@@ -32,4 +34,7 @@ def main():
         parser.print_help()
 
 if __name__ == "__main__":
+    start_method = mp.get_start_method(allow_none=True)
+    if start_method != "spawn":
+        mp.set_start_method("spawn", force=True)
     main()

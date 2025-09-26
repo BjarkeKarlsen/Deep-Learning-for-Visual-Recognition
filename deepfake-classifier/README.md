@@ -1,77 +1,39 @@
 # Deepfake Detection CNN
-**3-class deepfake detection** (Real, Synthetic, Tampered) using the SID_Set dataset  
-For course: *Deep Learning for Visual Recognition | Group 3*
+Simple 3-class classifier (Real / Synthetic / Tampered) built around the Hugging Face `saberzl/SID_Set` dataset.
 
-
-**Note:** Currently downloads the entire SID_Set dataset to `~/.cache/huggingface/datasets/`. To use streaming mode (no download), modify `dataset.py` to use `load_dataset(..., streaming=True)`.
-
-## Setup
-
+## Quick start
 ```bash
-# Create environment
-conda create -n deepfake-env python=3.13.7
-conda activate deepfake-env
-
-# Install dependencies
+python -m venv .venv            # or use conda
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-## Configuration
-All defaults live in `src/config/default.yaml`. Edit the repository-level `config.yaml` to override anything — it now lists every available option.
-
-Useful commands:
-
-```bash
-# Inspect the merged config (defaults + overrides)
-python -m src.utils.config_loader
-
-# Write a fresh copy of the default template
-python -m src.utils.config_loader --dump-default --output my-config.yaml
-# Add --force to overwrite an existing file
-```
-
-The configuration sections map directly to the dataclasses in `src/config/schema.py` (`data`, `loader`, `model`, `training`, `paths`). Results and weights paths are resolved relative to the project root unless you provide absolute paths.
-
-
-***
-
-## Run
-
-```bash
-# Train model (optional: --config path/to/experiment.yaml)
+# train the CNN (saves weights + metrics)
 python main.py --train
 
-# Evaluate model
+# evaluate with the saved weights
 python main.py --eval
 ```
+The script auto-selects GPU (`cuda`) if available; otherwise it stays on CPU.
 
-## Information
-For more documentation see docs under `Deepfake\docs`
+## How data is handled
+- Reads `saberzl/SID_Set` via Hugging Face datasets.
+- Streams by default (`data.use_streaming: true`) so nothing is downloaded. Flip to `false` to keep a local cache (`~/.cache/huggingface/datasets/` by default).
+- Optional disk caching (`data.use_disk_cache: true`) saves any custom splits under `~/.cache/huggingface/datasets/custom_splits/SID/`.
 
+## Using `config.yaml`
+- `src/config/default.yaml` is the template; `config.yaml` overrides it. Use `--config <file>` to point at another file.
+- Most-used fields:
+  - `data`: sample counts (`null`=full split), `image_size`, streaming + caching toggles.
+  - `loader`: batch size, shuffles, worker count.
+  - `training`: epochs, learning rate, seed (device auto-fills).
+  - `paths`: output locations for weights, results, logs.
+- Preview effective settings: `python -m src.utils.config_loader [--config path]`.
+- Need a fresh copy? `python -m src.utils.config_loader --dump-default --output my-config.yaml` (`--force` to overwrite).
 
-## Notes
+## What gets produced
+- Best checkpoint: `models/best_model.pth` (or your `paths.model_path`).
+- Metrics & plots: JSON + PNG files in `results/` by default.
+- Logs: timestamped files in `logs/` unless `paths.logging_dir` says otherwise.
 
-- Data is cached by default in `~/.cache/huggingface/datasets/`.  
-- To enable streaming (no full download), set `cfg.data.use_streaming: true` in `config.yaml`.
-
-***
-
-## How the Data Manager Works
-
-See **DATAMANAGER.md** for details on:
-
-- HuggingFace cache locations  
-- Custom split caching under `custom_splits/SID/`  
-- Enabling streaming vs. full download  
-
-***
-
-## Dataset Class Details
-
-See **DATASET.md** for information on:
-
-- Keyword-only preprocessing parameters  
-- Default transforms derived from config  
-- Multiprocessing pickle fixes  
-
-***
+More detail sits in `docs/Configuration.md`, `docs/DataManager.md`, and `docs/Dataset.md`.

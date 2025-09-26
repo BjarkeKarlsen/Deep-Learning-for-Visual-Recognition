@@ -12,11 +12,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class SIDDataset(Dataset):
     """
     A custom PyTorch Dataset for loading images, optional masks, and labels
-    with preprocessing and device placement.
+    with preprocessing applied.
 
     Args:
         dataset: A sequence of samples, each containing "image", optional "mask", and "label".
-        device: If provided, the device to which the data tensors will be transformed.
         transform (callable): Transform pipeline applied to images.
         transform_mask (callable): Transform pipeline applied to masks.
 
@@ -25,7 +24,6 @@ class SIDDataset(Dataset):
         - Creates a dummy zero mask if no mask is provided. 
         - Ensures image and mask shapes match in size and channels.
         - Converts labels to torch.long tensors.
-        - Moves image, mask, and label to the specified device.
         - Returns a dict with keys: {"image", "mask", "label"}.
     """
 
@@ -41,14 +39,12 @@ class SIDDataset(Dataset):
                  image_size,
                  normalize_mean,
                  normalize_std,
-                 device=None,
                  transform=None,
                  transform_mask=None):
         self.dataset        = dataset
         self.image_size     = image_size
         self.normalize_mean = normalize_mean
         self.normalize_std  = normalize_std
-        self.device         = device
 
         # Set default transforms if not provided
         if transform is None:
@@ -98,10 +94,6 @@ class SIDDataset(Dataset):
             )
 
         label = torch.tensor(ex["label"], dtype=torch.long) 
-        
-        if self.device:
-            image, mask, label = image.to(self.device), mask.to(self.device), label.to(self.device)
-            
+
         # TODO: Change the way to load the data when the PR is done. To be {"image": image, "mask": mask, "label": label}
         return image, label
-

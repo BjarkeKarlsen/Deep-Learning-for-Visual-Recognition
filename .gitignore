@@ -6,6 +6,11 @@
 .cache/
 data/cache/
 
+# Deepfake classifier artifacts
+deepfake-classifier/logs/
+deepfake-classifier/results/
+deepfake-classifier/models/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

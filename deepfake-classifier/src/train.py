@@ -34,8 +34,7 @@ def train(logger: SidLogger, cfg: Config):
             train_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std,
-            device=device
+            normalize_std=cfg.model.normalize_std
         ),
         batch_size=cfg.loader.batch_size,
         shuffle=cfg.loader.shuffle_train,
@@ -47,8 +46,7 @@ def train(logger: SidLogger, cfg: Config):
             val_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std,
-            device=device
+            normalize_std=cfg.model.normalize_std
         ),
         batch_size=cfg.loader.batch_size,
         shuffle=cfg.loader.shuffle_val,
