@@ -1,10 +1,11 @@
 # DATASET.md
 
-# SIDDataset
+## SIDDataset
 
-Custom PyTorch `Dataset` for images, masks, and labels with preprocessing and optional device placement.
+Custom PyTorch `Dataset` that adapts SID samples into tensors for the
+classification pipeline.
 
-## Constructor Signature
+### Constructor Signature
 ```python
 def __init__(
     self,
@@ -13,53 +14,52 @@ def __init__(
     image_size,
     normalize_mean,
     normalize_std,
-    device=None,
     transform=None,
-    transform_mask=None
+    transform_mask=None,
 )
 ```
 
-- `dataset`: HF `Dataset` split object
-- `image_size`: int, target height & width
-- `normalize_mean` / `normalize_std`: lists of 3 floats
-- `device`: `torch.device` (e.g., `'cpu'` or `'cuda'`)
-- `transform`: override default image transform pipeline
-- `transform_mask`: override default mask transform
+- `dataset`: Hugging Face `Dataset` split object
+- `image_size`: target height & width in pixels
+- `normalize_mean` / `normalize_std`: 3-element lists used by
+  `torchvision.transforms.v2.Normalize`
+- `transform`: optional override for the default image transform pipeline
+- `transform_mask`: optional override for the default mask transform
 
-## Default Transforms
+### Default Transforms
 
-- **Image**: `to_rgb` → `Resize(image_size)` → `ToImage` → `ToDtype(torch.float32)` → `Normalize(mean, std)`
-- **Mask**: `Resize(image_size)` → `Grayscale(1)` → `ToImage` → `ToDtype(torch.float32)`
+- **Image**: `to_rgb` → `Resize(image_size)` → `ToImage` →
+  `ToDtype(torch.float32, scale=True)` → `Normalize(mean, std)`
+- **Mask**: `Resize(image_size)` → `Grayscale(num_output_channels=1)` →
+  `ToImage` → `ToDtype(torch.float32, scale=True)`
 
-## Multiprocessing Compatibility
-
-- Keyword-only parameters prevent pickling errors when using `num_workers > 0`.
-
-## __getitem__ Behavior
+### `__getitem__`
 
 1. Loads sample `ex = dataset[idx]`.
-2. Applies `transform` to `ex['image']`.
-3. Applies `transform_mask` if `ex['mask']` exists, else creates a zero mask.
-4. Converts `ex['label']` to `torch.long` tensor.
-5. Moves tensors to `device` if provided.
-6. Returns a tuple `(image, label)`.
+2. Applies `transform` to `ex["image"]`.
+3. Applies `transform_mask` when `ex["mask"]` exists; otherwise creates a
+   zero mask with shape `(1, image_size, image_size)`.
+4. Converts `ex["label"]` to `torch.long`.
+5. Returns a dictionary with keys `"image"`, `"label"`, and `"mask"` (the mask
+   is present even when it contains only zeros), mirroring the structure used
+   by the segmentation pipeline.
 
-## Usage Example
+### Usage Example
 
 ```python
 from dataset import SIDDataset
 from torch.utils.data import DataLoader
-import torch
 
 # Assume train_ds is an HF Dataset
-dataset = SIDDataset(
+train_dataset = SIDDataset(
     train_ds,
     image_size=512,
-    normalize_mean=[0.485,0.456,0.406],
-    normalize_std=[0.229,0.224,0.225],
-    device=torch.device('cuda')
+    normalize_mean=[0.485, 0.456, 0.406],
+    normalize_std=[0.229, 0.224, 0.225],
 )
-loader = DataLoader(dataset, batch_size=8, shuffle=True, num_workers=4)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
 ```
 
-This file explains how to customize transforms, handle missing masks, and work with multi-worker loading without pickle issues.
+The segmentation pipeline wraps its own dataset (`TamperedSegmentationDataset`)
+which enforces the presence of masks and uses nearest-neighbour resizing to keep
+binary masks intact.

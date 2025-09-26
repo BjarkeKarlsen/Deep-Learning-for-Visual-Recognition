@@ -1,72 +1,68 @@
 # DATAMANAGER.md
 
-# SIDDatasetManager
+## SIDDatasetManager
 
-`SIDDatasetManager` centralizes dataset loading, splitting, streaming, and on-disk caching for the HuggingFace SID_Set dataset.
+`SIDDatasetManager` centralises loading, splitting, optional streaming, and
+custom caching for the Hugging Face `saberzl/SID_Set` dataset. The manager is
+shared by both the classification and segmentation pipelines.
 
-## Key Features
+### Key Features
 
-- **HuggingFace Caching**: Always uses `~/.cache/huggingface/datasets` by default. Controlled via `HF_HOME` and `HF_DATASETS_CACHE` environment variables.
-- **Custom Split Caching**: Derived subsets (train/val/test) are saved under:
-  ```
-  ~/.cache/huggingface/datasets/custom_splits/SID/<split>/
-  ```
-- **Streaming Support**: Set `use_streaming=True` to stream without full download.
-- **On-Disk Cache Control**: Toggle with `use_disk_cache` parameter.
+- **Hugging Face Cache Awareness** – honours `HF_DATASETS_CACHE` and `HF_HOME`
+  before falling back to `~/.cache/huggingface/datasets`.
+- **Custom Split Caching** – derived subsets are stored under
+  `~/.cache/huggingface/datasets/custom_splits/SID/<split>/` when
+  `use_disk_cache=True`.
+- **Streaming Support** – when `use_streaming=True`, the manager uses the
+  Hugging Face iterable interface and materialises only the requested number of
+  samples for downstream processing.
+- **Segmentation Filtering** – `get_segmentation_splits` filters to samples that
+  include masks and whose label matches `tampered_label` from the config.
 
-## Usage
+### Usage
 
 ```python
-from dataset_manager import SIDDatasetManager
+from src.common.dataset_manager import SIDDatasetManager
 
-# Initialize
 manager = SIDDatasetManager(
     dataset_name="saberzl/SID_Set",
     use_streaming=False,
-    use_disk_cache=True
+    use_disk_cache=True,
 )
 
-# Retrieve splits (train, val, test)
 train_ds, val_ds, test_ds = manager.get_splits(
-    train_max=1000,  # limit training samples
-    val_max=200,     # limit validation samples
-    test_max=200
+    train_max=1000,
+    val_max=200,
+    test_max=200,
+)
+
+train_tampered, val_tampered, test_tampered = manager.get_segmentation_splits(
+    tampered_label=2,
+    train_max=400,
+    val_max=80,
+    test_max=80,
 )
 ```
 
-## Methods
+### Methods
 
-- `load_dataset()`
-  - Downloads (or streams) full dataset splits.
+- `load_dataset()` – fetches the dataset via `datasets.load_dataset`, respecting
+  streaming settings and caching the base splits for reuse.
+- `get_splits(train_max, val_max, test_max, use_official_test=False,
+  val_offset=30000, test_offset=0)` – returns `(train, val, test)` subsets. When
+  the dataset lacks a validation split the manager derives one from the end of
+  the training split and handles streaming iterables transparently.
+- `get_segmentation_splits(**kwargs)` – wraps `get_splits` and filters to
+  tampered samples that provide masks. Useful for the U-Net pipeline.
+- `get_cache_info()` – reports the active Hugging Face cache directory, custom
+  split cache location, and any relevant environment variables.
+- `clear_custom_cache()` – deletes only the custom split cache, preserving the
+  original Hugging Face dataset downloads.
 
-- `get_splits(train_max, val_max, test_max, use_official_test=False, val_offset=30000, test_offset=0)`
-  - Returns (`train_ds`, `val_ds`, `test_ds`) as HF `Dataset` objects.
+### Streaming Notes
 
-- `get_cache_info()`
-  - Returns a dict with:
-    - `hf_datasets_cache`: root HF cache path
-    - `custom_splits_cache`: path for custom splits
-    - Environment variables: `HF_HOME`, `HF_DATASETS_CACHE`
-
-- `clear_custom_cache()`
-  - Deletes only the custom split caches, preserves the original dataset cache.
-
-- `get_cache_size()`
-  - Returns human-readable sizes for total HF cache and custom splits only.
-
-
-<details>
-<summary>Example: Streaming Mode</summary>
-
-```python
-manager_stream = SIDDatasetManager(
-    dataset_name="saberzl/SID_Set",
-    use_streaming=True,
-    use_disk_cache=False
-)
-train_ds, val_ds, test_ds = manager_stream.get_splits(
-    train_max=500, val_max=100, test_max=100
-)
-```
-
-</details>
+- For iterative splits, requesting `train_max`, `val_max`, or `test_max` limits
+  the number of records materialised in memory.
+- Some downstream PyTorch utilities expect random-access datasets. The provided
+  pipelines wrap streaming splits in `Dataset.from_list` to restore indexing
+  semantics after the requested samples are buffered.

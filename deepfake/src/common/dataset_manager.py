@@ -196,11 +196,18 @@ class SIDDatasetManager:
                 "validation_subset", max_samples=val_max, derive_from="validation"
             )
         else:
+            train_split = self._get_base_split("train")
+            try:
+                train_length = len(train_split)
+            except TypeError:
+                train_length = None
+
+            start_index = 0 if train_length is None else max(0, train_length - val_offset)
             val_ds = self._load_or_cache_split(
                 split="validation_custom",
                 max_samples=val_max,
                 derive_from="train",
-                start=len(self._get_base_split("train")) - val_offset
+                start=start_index
             )
 
         # TEST
