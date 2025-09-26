@@ -67,6 +67,7 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         train_max=0,
         val_max=0,
         test_max=cfg.data.test_samples,
+        test_offset=cfg.data.val_samples,
     )
 
     test_loader = prepare_dataloader(test_ds, cfg)
