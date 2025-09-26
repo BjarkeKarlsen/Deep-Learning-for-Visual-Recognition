@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import pandas as pd
+from dataclasses import asdict
 
 from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix
@@ -24,7 +25,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     device = torch.device(cfg.training.device)
 
     # Log evaluation configuration
-    logger.log_evaluation_config(cfg)
+    logger.log_evaluation_config(asdict(cfg))
 
     logger.info("=" * 60)
     logger.info("EVALUATION MODE")

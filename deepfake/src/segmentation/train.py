@@ -1,5 +1,6 @@
 import math
 import os
+from dataclasses import asdict
 from typing import Dict
 
 import torch
@@ -51,7 +52,7 @@ def prepare_dataloader(dataset, cfg: Config, *, shuffle: bool) -> DataLoader:
 def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     """Optimise the U-Net on tampered examples and log training history."""
     device = torch.device(cfg.training.device)
-    logger.log_training_config(cfg)
+    logger.log_training_config(asdict(cfg))
 
     manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,

@@ -1,5 +1,5 @@
 import os
-
+from dataclasses import asdict
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,7 +19,7 @@ def train(logger: SidLogger, cfg: Config):
     """Train the lightweight classifier on the configured SID subsets."""
     device = torch.device(cfg.training.device)
 
-    logger.log_training_config(cfg)
+    logger.log_training_config(asdict(cfg))
 
     manager = SIDDatasetManager(dataset_name=cfg.data.dataset_name, 
                                 use_disk_cache=cfg.data.use_disk_cache, 

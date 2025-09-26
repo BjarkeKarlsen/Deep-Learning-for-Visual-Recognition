@@ -1,4 +1,5 @@
 import math
+from dataclasses import asdict
 from typing import Dict
 
 import numpy as np
@@ -52,7 +53,7 @@ def prepare_dataloader(dataset, cfg: Config) -> DataLoader:
 def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     """Evaluate a trained U-Net and persist Dice/IoU summaries."""
     device = torch.device(cfg.training.device)
-    logger.log_evaluation_config(cfg)
+    logger.log_evaluation_config(asdict(cfg))
 
     check_model_exists(cfg.paths.model_path)
 
