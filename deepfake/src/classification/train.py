@@ -124,7 +124,9 @@ def train(logger: SidLogger, cfg: Config):
             if best_val_acc is None or val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_epoch = epoch
-                os.makedirs(os.path.dirname(cfg.paths.model_path), exist_ok=True)
+                model_dir = os.path.dirname(cfg.paths.model_path)
+                if model_dir:
+                    os.makedirs(model_dir, exist_ok=True)
                 torch.save(model.state_dict(), cfg.paths.model_path)
                 logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
 

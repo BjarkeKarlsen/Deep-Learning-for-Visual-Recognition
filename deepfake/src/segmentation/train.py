@@ -141,7 +141,9 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         metric_to_compare = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
         if best_val_dice is None or metric_to_compare > best_val_dice:
             best_val_dice = metric_to_compare
-            os.makedirs(os.path.dirname(cfg.paths.model_path), exist_ok=True)
+            model_dir = os.path.dirname(cfg.paths.model_path)
+            if model_dir:
+                os.makedirs(model_dir, exist_ok=True)
             torch.save(model.state_dict(), cfg.paths.model_path)
             logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
 

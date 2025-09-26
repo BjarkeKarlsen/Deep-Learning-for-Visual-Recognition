@@ -53,7 +53,7 @@ python main.py --train --task classification --config classification.yaml
 python main.py --eval --task classification --config classification.yaml
 ```
 
-Each batch yielded by the classifier dataset is a dictionary with `"image"`, `"label"`, and a dummy `"mask"` tensor (mask is present only for api consistency).
+Each batch yielded by the classifier dataset is a dictionary with `"image"`, `"label"`, and a dummy `"mask"` tensor (mask is present only for api consistency). The example `classification.yaml` sends artefacts to `models/classification/` and `results/classification/` so they never collide with segmentation outputs.
 
 ### 3.2 Segmentation
 
@@ -69,7 +69,7 @@ Segmentation splits automatically filter to samples whose `label` matches `model
 
 ### 3.3 Custom Config
 
-Pick any YAML file that matches the schema, then pass it explicitly. For example:
+Pick any YAML file that matches the schema, then pass it explicitly. Keep `paths.model_path`, `paths.results_dir`, and `paths.logging_dir` distinct per pipeline when you want their checkpoints, metrics, and logs separated, e.g. `models/segmentation/...` vs. `models/classification/...`.
 
 ```bash
 python main.py --train --task classification --config configs/large-run.yaml

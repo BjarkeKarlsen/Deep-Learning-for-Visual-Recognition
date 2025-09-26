@@ -107,6 +107,7 @@ class SIDDatasetManager:
             return Dataset.from_list(items)
         else:
             length = len(ds)
+            start = max(0, min(start, length))
             if max_samples is None:
                 if start == 0:
                     return ds

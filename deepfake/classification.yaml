@@ -34,7 +34,7 @@ training:
   seed: 42
 
 paths:
-  model_path: models/best_model.pth
-  results_dir: results
+  model_path: models/classification/best_model.pth
+  results_dir: results/classification
   history_file: training_history.json
-  logging_dir: null
+  logging_dir: logs/classification
