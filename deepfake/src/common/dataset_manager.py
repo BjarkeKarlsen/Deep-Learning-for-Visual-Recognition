@@ -36,11 +36,129 @@ class SIDDatasetManager:
         """Materialise streaming splits into map-style datasets when needed."""
         ds = self._get_base_split(split)
         if isinstance(ds, IterableDataset):
-            # Materialise entire split so downstream code can rely on len/index.
+            if self.use_streaming:
+                raise ValueError(
+                    f"Split '{split}' is in streaming mode; random access is unavailable. "
+                    "Provide an explicit sample cap or disable streaming."
+                )
+            # Hugging Face may yield iterable shards even for cached datasets. In
+            # that scenario we still materialise once so downstream code can rely
+            # on random access semantics (len/index/select).
             materialised = self._slice_split(ds, max_samples=None)
             self._cached_splits[split] = materialised
             return materialised
         return ds
+
+    @staticmethod
+    def _empty_like(reference: Optional[Dataset]) -> Dataset:
+        """Return an empty dataset sharing the same schema when possible."""
+        if reference is not None:
+            try:
+                return reference.select([])
+            except Exception:
+                pass
+        return Dataset.from_list([])
+
+    @staticmethod
+    def _normalise_streaming_cap(split: str, cap: Optional[int]) -> int:
+        if cap is None:
+            raise ValueError(
+                f"Streaming mode requires a finite sample cap for the '{split}' split."
+            )
+        if cap < 0:
+            raise ValueError(
+                f"Streaming sample cap for split '{split}' must be non-negative (got {cap})."
+            )
+        return cap
+
+    def _get_streaming_splits(
+        self,
+        *,
+        train_max: Optional[int],
+        val_max: Optional[int],
+        test_max: Optional[int],
+        test_offset: int,
+        use_official_test: bool,
+    ) -> Tuple[Dataset, Dataset, Dataset]:
+        """Materialise bounded subsets while preserving streaming semantics."""
+
+        splits = self.load_dataset()
+        if "train" not in splits:
+            raise ValueError("Streaming dataset does not provide a 'train' split.")
+
+        if use_official_test and test_max is None:
+            raise ValueError(
+                "Streaming mode requires 'test_max' when 'use_official_test' is True."
+            )
+
+        train_cap = self._normalise_streaming_cap("train", train_max)
+        train_ds = self._load_or_cache_split(
+            "train_subset",
+            max_samples=train_cap,
+            derive_from="train",
+            start=0,
+        )
+
+        val_cap = 0
+        if "validation" in splits:
+            if val_max is None:
+                raise ValueError(
+                    "Streaming mode requires 'val_max' when a validation split is available."
+                )
+            val_cap = self._normalise_streaming_cap("validation", val_max)
+            val_ds = self._load_or_cache_split(
+                "validation_subset",
+                max_samples=val_cap,
+                derive_from="validation",
+                start=0,
+            )
+        else:
+            if val_max not in (None, 0):
+                raise ValueError(
+                    "Streaming mode cannot derive a validation split without an original "
+                    "'validation' split; consider enabling the official validation split "
+                    "or disabling streaming."
+                )
+            val_ds = self._empty_like(train_ds)
+
+        requested_test_cap = 0 if test_max is None else test_max
+        test_ds: Dataset
+        if requested_test_cap == 0:
+            test_ds = self._empty_like(val_ds if "validation" in splits else train_ds)
+        else:
+            test_cap = self._normalise_streaming_cap("test", requested_test_cap)
+            if use_official_test:
+                if "test" not in splits:
+                    raise ValueError(
+                        "Requested official test split in streaming mode, but the dataset "
+                        "does not provide a 'test' split."
+                    )
+                start_from_test = max(0, test_offset)
+                test_ds = self._load_or_cache_split(
+                    "test_subset",
+                    max_samples=test_cap,
+                    derive_from="test",
+                    start=start_from_test,
+                )
+            else:
+                if "validation" not in splits:
+                    raise ValueError(
+                        "Streaming mode requires a validation split to derive the test subset "
+                        "when 'use_official_test' is False."
+                    )
+                if val_max is None:
+                    raise ValueError(
+                        "Streaming mode needs 'val_max' to derive the test subset from validation."
+                    )
+                start_from_validation = val_cap + max(0, test_offset)
+                test_ds = self._load_or_cache_split(
+                    "test_custom",
+                    max_samples=test_cap,
+                    derive_from="validation",
+                    start=start_from_validation,
+                )
+
+        return train_ds, val_ds, test_ds
 
     @staticmethod
     def _compute_holdout_ranges(
@@ -202,6 +320,11 @@ class SIDDatasetManager:
                     iterator = islice(iterator, start, None)
 
             if max_samples is None:
+                if self.use_streaming:
+                    raise ValueError(
+                        "Streaming splits require an explicit sample cap; "
+                        "provide max_samples when requesting materialisation."
+                    )
                 items = list(iterator)
             else:
                 if hasattr(iterator, "take"):
@@ -236,6 +359,12 @@ class SIDDatasetManager:
         """
         Load (or derive) a split, optionally cache it in HF cache structure.
         """
+        if self.use_streaming and max_samples is None:
+            raise ValueError(
+                "Streaming mode requires 'max_samples' to be specified when "
+                f"loading the {derive_from or split} split."
+            )
+
         id_components = [derive_from or split]
         max_str = str(max_samples) if max_samples is not None else "all"
         id_components.append(f"max{max_str}")
@@ -296,6 +425,15 @@ class SIDDatasetManager:
         """
         Return (train, validation, test) datasets, all cached in HF locations.
         """
+        if self.use_streaming:
+            return self._get_streaming_splits(
+                train_max=train_max,
+                val_max=val_max,
+                test_max=test_max,
+                test_offset=test_offset,
+                use_official_test=use_official_test,
+            )
+
         splits = self.load_dataset()
         has_validation = "validation" in splits
         use_official_test_split = use_official_test and "test" in splits
@@ -489,9 +627,9 @@ class SIDDatasetManager:
         """Return splits filtered to samples that have masks for tampering."""
 
         base_train, base_val, base_test = self.get_splits(
-            train_max=None,
-            val_max=None,
-            test_max=None,
+            train_max=train_max,
+            val_max=val_max,
+            test_max=test_max,
             val_offset=val_offset,
             test_offset=test_offset,
             use_official_test=use_official_test,

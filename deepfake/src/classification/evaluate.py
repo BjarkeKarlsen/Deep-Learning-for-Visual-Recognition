@@ -37,7 +37,11 @@ def evaluate(logger: SidLogger, cfg: Config):
         use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming
     )
-    _, _, test_ds = manager.get_splits(test_max=cfg.data.test_samples)
+    _, _, test_ds = manager.get_splits(
+        train_max=0,
+        val_max=0,
+        test_max=cfg.data.test_samples,
+    )
 
     test_loader = DataLoader(
         SIDClassificationDataset(

@@ -64,6 +64,8 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     _, _, test_ds = manager.get_segmentation_splits(
         tampered_label=getattr(cfg.model, "tampered_label", 2),
+        train_max=0,
+        val_max=0,
         test_max=cfg.data.test_samples,
     )
 

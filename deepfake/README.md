@@ -1,11 +1,11 @@
 # Deepfake Detection Toolkit
 
-Two lightweight PyTorch pipelines for the Hugging Face [`saberzl/SID_Set`](https://huggingface.co/datasets/saberzl/SID_Set) dataset:
+Two lightweight PyTorch pipelines built on the Hugging Face [`saberzl/SID_Set`](https://huggingface.co/datasets/saberzl/SID_Set) dataset:
 
-- **Classification** – detects `Real`, `Synthetic`, or `Tampered` frames via a simple CNN.
-- **Segmentation** – highlights the tampered regions using a compact U-Net.
+- **Classification** – predicts `Real`, `Synthetic`, or `Tampered` frames with a compact CNN.
+- **Segmentation** – localises tampered regions with a slim U-Net.
 
-Both share the same configuration system, logging utilities, and Hugging Face data manager.
+Both pipelines share the same YAML-driven configuration system, logging utilities, and Hugging Face data manager.
 
 ---
 
@@ -22,40 +22,35 @@ The code auto-selects `cuda` when a GPU is available; otherwise it falls back to
 
 ---
 
-## 2. Configuration Basics
+## 2. Configuration (YAML Required)
 
-Configuration is driven by `src/config/default.yaml` plus an explicit override file that you pass via `--config`.
+- Every run must point to a `.yaml` config with `--config <file>`. JSON/TOML/etc. are not supported.
+- Default configs live at the project root:
+  - `classification.yaml` – tailored to `--task classification`.
+  - `segmentation.yaml` – tailored to `--task segmentation`.
+- Copy either file if you need a variant, e.g. `cp classification.yaml configs/large-batch.yaml`, then update paths and hyperparameters inside the YAML.
+- Keep `paths.model_path`, `paths.results_dir`, and `paths.logging_dir` unique per pipeline so checkpoints and logs never collide. The provided defaults already isolate outputs under `models/<task>/` and `results/<task>/`.
+- Streaming is enabled by default via `data.use_streaming: true` to avoid downloading the entire dataset. Switch it to `false` when you want Hugging Face to manage an on-disk cache instead.
 
-Key sections:
-- `data`: image size, maximum sample counts (`null` to use the full split), streaming and caching toggles, dataset name.
-- `loader`: batch size, shuffle flags, number of workers.
-- `model`: class names, normalisation stats, tampered class label (used by segmentation filtering).
-- `training`: epochs, learning-rate, random seed (respected by `main.py`).
-- `paths`: output locations for checkpoints, results, and optional logging directory.
-
-Helpful utilities:
-- Preview the effective config: `python -m src.utils.config_loader --config classification.yaml`
-- Dump the default template: `python -m src.utils.config_loader --dump-default --output my-config.yaml`
-
-> **Streaming note:** the default config keeps `data.use_streaming: true` to avoid downloading the full dataset. The pipelines need random-access datasets; when you set `train/val/test_samples: null` with streaming enabled, the loader materialises the consumed split in memory. Switch `use_streaming` to `false` if you plan to run on the full dataset and want Hugging Face to manage an on-disk cache instead.
+See `docs/Configuration.md` for field-by-field details.
 
 ---
 
-## 3. Running the Pipelines
+## 3. Run Pipelines
 
-### 3.1 Classification
+### Classification
 
 ```bash
 # train (writes metrics + best checkpoint)
 python main.py --train --task classification --config classification.yaml
 
-# evaluate using the latest trained weights
+# evaluate with the latest trained weights
 python main.py --eval --task classification --config classification.yaml
 ```
 
-Each batch yielded by the classifier dataset is a dictionary with `"image"`, `"label"`, and a dummy `"mask"` tensor (mask is present only for api consistency). The example `classification.yaml` sends artefacts to `models/classification/` and `results/classification/` so they never collide with segmentation outputs.
+Each batch contains `"image"`, `"label"`, and a placeholder `"mask"` tensor for API consistency.
 
-### 3.2 Segmentation
+### Segmentation
 
 ```bash
 # train the U-Net on tampered examples only
@@ -65,32 +60,20 @@ python main.py --train --task segmentation --config segmentation.yaml
 python main.py --eval --task segmentation --config segmentation.yaml
 ```
 
-Segmentation splits automatically filter to samples whose `label` matches `model.tampered_label` **and** contain a mask.
-
-### 3.3 Custom Config
-
-Pick any YAML file that matches the schema, then pass it explicitly. Keep `paths.model_path`, `paths.results_dir`, and `paths.logging_dir` distinct per pipeline when you want their checkpoints, metrics, and logs separated, e.g. `models/segmentation/...` vs. `models/classification/...`.
-
-```bash
-python main.py --train --task classification --config configs/large-run.yaml
-```
+Segmentation splits automatically filter to samples whose `label` matches `model.tampered_label` and that include a mask.
 
 ---
 
 ## 4. Outputs and Logging
 
-- **Checkpoints** – `cfg.paths.model_path` (default `models/best_model.pth`).
-- **Metrics & history** – JSON files and plots under `cfg.paths.results_dir`.
-- **Logs** – timestamped files in `logs/` or `cfg.paths.logging_dir` when provided.
-
-Segmentation and classification both persist Matplotlib figures (confusion matrix, metric bar charts, training curves) alongside their metric JSON payloads.
+- **Checkpoints** – saved under `cfg.paths.model_path` (default `models/<task>/best_model.pth`).
+- **Metrics & plots** – written to `cfg.paths.results_dir`, including Matplotlib curves and confusion matrices.
+- **Logs** – timestamped files in `logs/` or the override specified in `cfg.paths.logging_dir`.
 
 ---
 
 ## 5. Troubleshooting & Tips
 
-- Set `training.seed` in your config to reproduce runs. `main.py` honours the value at startup.
-- When using streaming with large sample caps, consider enabling `data.use_disk_cache` to avoid repeatedly materialising splits.
-- If Hugging Face credentials are required (private datasets), log in via `huggingface-cli login` before running the scripts.
-
-Further reference is available in `docs/Configuration.md`, `docs/DataManager.md`, and `docs/Dataset.md`.
+- Set `training.seed` in your YAML to reproduce runs; `main.py` applies it at startup.
+- For large streaming jobs, enable `data.use_disk_cache` to avoid re-materialising splits in memory.
+- Authenticate with `huggingface-cli login` if the dataset or models require credentials.
