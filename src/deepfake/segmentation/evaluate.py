@@ -32,6 +32,7 @@ def dice_and_iou(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7)
 
 
 def prepare_dataloader(dataset, cfg: Config) -> DataLoader:
+    """Wrap a segmentation subset with transforms or return `None` when empty."""
     if dataset is None or len(dataset) == 0:
         return None
 

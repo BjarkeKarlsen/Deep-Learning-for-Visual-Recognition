@@ -77,6 +77,7 @@ class ConfigLoader:
         return destination
 
     def _ensure_output_dirs(self) -> None:
+        """Create results/logging directories so subsequent saves do not fail."""
         results_dir = Path(self.cfg.paths.results_dir)
         results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -85,17 +86,20 @@ class ConfigLoader:
 
     @staticmethod
     def _load_yaml(path: Path):
+        """Load a YAML file while surfacing a clear error if it is missing."""
         if not path.exists():
             raise FileNotFoundError(f"Expected configuration file at {path}")
         return OmegaConf.load(path)
 
     def _normalize_paths(self, cfg: Config) -> None:
+        """Resolve relative paths in the config against the repository root."""
         cfg.paths.model_path = self._resolve_repo_path(cfg.paths.model_path)
         cfg.paths.results_dir = self._resolve_repo_path(cfg.paths.results_dir)
         if cfg.paths.logging_dir:
             cfg.paths.logging_dir = self._resolve_repo_path(cfg.paths.logging_dir)
 
     def _resolve_repo_path(self, path_str: str) -> str:
+        """Return an absolute path for repo-relative or user-relative inputs."""
         path = Path(path_str).expanduser()
         if not path.is_absolute():
             path = (self.repo_root / path).resolve()
@@ -103,6 +107,7 @@ class ConfigLoader:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Construct the CLI parser for dumping or inspecting configuration files."""
     parser = argparse.ArgumentParser(description="Deepfake configuration helper")
     parser.add_argument(
         "--config",

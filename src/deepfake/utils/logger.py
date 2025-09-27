@@ -10,11 +10,7 @@ import pandas as pd
 
 
 class SidLogger:
-    """
-    A comprehensive logger for training and evaluation workflows.
-    Supports console+file outputs, structured metrics logging,
-    evaluation report tables, and timing via context manager.
-    """
+    """Experiment logger with console/file sinks, metric formatters, and timing helpers."""
 
     def __init__(
         self,
@@ -74,6 +70,7 @@ class SidLogger:
         return self._logger
 
     def log_model_info(self, model, total_params: int, trainable_params: int):
+        """Emit a compact summary of the architecture and parameter counts."""
         self.logger.info("=" * 60)
         self.logger.info("MODEL ARCHITECTURE")
         self.logger.info("=" * 60)
@@ -83,6 +80,7 @@ class SidLogger:
         self.logger.info("=" * 60)
 
     def log_training_config(self, config: Dict[str, Any]):
+        """Log the resolved training configuration dictionary one key per line."""
         self.logger.info("=" * 60)
         self.logger.info("TRAINING CONFIGURATION")
         self.logger.info("=" * 60)
@@ -91,6 +89,7 @@ class SidLogger:
         self.logger.info("=" * 60)
 
     def log_evaluation_config(self, config: Dict[str, Any]):
+        """Log the resolved evaluation configuration dictionary one key per line."""
         self.logger.info("=" * 60)
         self.logger.info("EVALUATION CONFIGURATION")
         self.logger.info("=" * 60)
@@ -156,25 +155,19 @@ class SidLogger:
         self.logger.info("=" * 60)
 
     def log_classification_report(self, report: Dict[str, Any]):
-        """
-        Log sklearn classification_report dict as a table.
-        """
+        """Render an sklearn `classification_report(..., output_dict=True)` payload as a table."""
         df = pd.DataFrame(report).transpose()
         self.logger.info("CLASSIFICATION REPORT")
         self.logger.info("\n" + df.to_string(float_format="{:.2f}".format))
 
     def log_confusion_matrix(self, cm: np.ndarray, labels: list):
-        """
-        Log confusion matrix with labels.
-        """
+        """Log a confusion matrix with label names as a formatted table."""
         df = pd.DataFrame(cm, index=labels, columns=labels)
         self.logger.info("CONFUSION MATRIX")
         self.logger.info("\n" + df.to_string())
 
     def save_json(self, data: Any, filename: str, indent: int = 2):
-        """
-        Save any JSON-serializable data to a file under log_dir.
-        """
+        """Persist JSON-serialisable payloads under the logger's directory and announce the path."""
         path = self.log_dir / filename
         with open(path, "w") as f:
             json.dump(data, f, indent=indent)
@@ -182,12 +175,7 @@ class SidLogger:
 
     @contextmanager
     def time_block(self, name: str) -> ContextManager[None]:
-        """
-        Context manager for timing operations:
-            with logger.time_block("load data"):
-                ...
-        Logs elapsed time on exit.
-        """
+        """Context manager that logs elapsed seconds for the enclosed code block."""
         start = datetime.now()
         yield
         end = datetime.now()

@@ -58,6 +58,7 @@ def main() -> None:
 
 
 def entrypoint() -> None:
+    """Enforce the 'spawn' start method before delegating to the CLI main routine."""
     start_method = mp.get_start_method(allow_none=True)
     if start_method != "spawn":
         mp.set_start_method(

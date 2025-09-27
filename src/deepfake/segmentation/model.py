@@ -71,6 +71,7 @@ class TamperSegmentationModel(nn.Module):
         self.head = nn.Conv2d(widths[0], out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Produce a single-channel tamper mask logits tensor aligned with the input resolution."""
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool(e1))
         e3 = self.enc3(self.pool(e2))

@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 def _conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
-    """Two-layer conv block with batch norm for stable training."""
+    """Two conv layers with batch norm to keep the shallow network stable."""
 
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
@@ -15,7 +15,7 @@ def _conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
 
 
 class BaselineClassifier(nn.Module):
-    """Lightweight CNN baseline with three conv stages and global pooling."""
+    """Compact CNN with three downsampling stages and a small MLP head."""
 
     def __init__(self, num_classes: int = 3, base_width: int = 32):
         super().__init__()
@@ -38,6 +38,7 @@ class BaselineClassifier(nn.Module):
         )
 
     def forward(self, x):
+        """Return class logits for a batch of RGB images shaped (N, 3, H, W)."""
         x = self.stem(x)
         x = self.downsample(x)
 

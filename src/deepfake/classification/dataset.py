@@ -7,12 +7,12 @@ from torch.utils.data import Dataset
 
 class SIDClassificationDataset(Dataset):
     """
-    Map-style dataset that standardises SID samples into tensors.
+    Adapt SID records into tensors compatible with the classification pipeline.
 
-    Returns a dictionary with keys:
+    Yields dictionaries containing:
         - "image": float tensor normalised to the configured mean/std
-        - "mask": float tensor (dummy zeros when the source lacks a mask)
-        - "label": long tensor with the class index
+        - "mask": float tensor (zeroed when the source lacks a mask)
+        - "label": long tensor holding the class index
     """
 
     @staticmethod
@@ -52,7 +52,7 @@ class SIDClassificationDataset(Dataset):
                     (self.image_size, self.image_size),
                     interpolation=InterpolationMode.NEAREST,
                 ),
-                Grayscale(num_output_channels=1),  # Keep mask tensors compatible with the segmentation pipeline
+                Grayscale(num_output_channels=1),  # Preserve single-channel masks for segmentation utilities
                 ToImage(),
                 ToDtype(torch.float32, scale=True)
             ])
@@ -63,6 +63,7 @@ class SIDClassificationDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """Return a transformed sample dict and inject zero masks when the source omits them."""
         if torch.is_tensor(idx):
             idx = idx.tolist()
 

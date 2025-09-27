@@ -14,6 +14,7 @@ def _resolve_path(save_path, output_dir, default_filename):
 
 
 def plot_confusion_matrix(cm, class_names, *, save_path=None, output_dir=None):
+    """Render a confusion matrix heatmap and save it to disk."""
     path = _resolve_path(save_path, output_dir, "confusion_matrix.png")
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -31,6 +32,7 @@ def plot_confusion_matrix(cm, class_names, *, save_path=None, output_dir=None):
 
 
 def plot_classification_metrics(report, *, class_names, save_path=None, output_dir=None):
+    """Plot per-class precision/recall/F1 bars using an sklearn report dictionary."""
     path = _resolve_path(save_path, output_dir, "metrics_barplot.png")
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -72,6 +74,7 @@ def plot_classification_metrics(report, *, class_names, save_path=None, output_d
 
 
 def plot_training_curves(history, *, save_path=None, output_dir=None):
+    """Plot loss and accuracy curves from the training history dictionary."""
     path = _resolve_path(save_path, output_dir, "training_curves.png")
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -103,6 +106,7 @@ def plot_training_curves(history, *, save_path=None, output_dir=None):
 
 
 def plot_segmentation_curves(history, *, save_path=None, output_dir=None):
+    """Plot segmentation loss and Dice curves extracted from the history dictionary."""
     path = _resolve_path(save_path, output_dir, "segmentation_curves.png")
     path.parent.mkdir(parents=True, exist_ok=True)
 

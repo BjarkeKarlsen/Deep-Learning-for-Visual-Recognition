@@ -6,10 +6,11 @@ from torchvision.transforms.v2 import Compose, Grayscale, Normalize, Resize, ToD
 
 
 class TamperedSegmentationDataset(Dataset):
-    """Dataset wrapper that yields only samples with tamper masks."""
+    """Filter SID samples to those with masks and emit tensors for U-Net style models."""
 
     @staticmethod
     def _ensure_rgb(img):
+        """Convert PIL inputs to RGB so colour stats match the classifier pipeline."""
         return img.convert("RGB") if isinstance(img, Image.Image) else img
 
     def __init__(
@@ -46,7 +47,7 @@ class TamperedSegmentationDataset(Dataset):
                     (self.image_size, self.image_size),
                     interpolation=InterpolationMode.NEAREST,
                 ),
-                Grayscale(num_output_channels=1),  # Ensure masks stay single-channel for the binary tamper task
+                Grayscale(num_output_channels=1),  # Keep masks single-channel for binary tamper predictions
                 ToImage(),
                 ToDtype(torch.float32, scale=True),
             ])
@@ -57,6 +58,7 @@ class TamperedSegmentationDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        """Return `(image, mask)` or `(image, mask, label)` with spatially aligned tensors."""
         example = self.dataset[idx]
         mask = example.get("mask")
         if mask is None:
