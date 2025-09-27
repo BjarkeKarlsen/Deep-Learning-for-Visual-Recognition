@@ -5,7 +5,7 @@ project.
 
 ---
 
-## 1. Schema (`src/config/schema.py`)
+## 1. Schema (`src/deepfake/config/schema.py`)
 
 Configuration is defined with `dataclasses`, giving type hints, defaults, and a
 single canonical schema:
@@ -57,10 +57,10 @@ class TrainingConfig:
 
 @dataclass
 class PathsConfig:
-    model_path: str = "models/best_model.pth"
-    results_dir: str = "results"
+    model_path: str = "outputs/models/best_model.pth"
+    results_dir: str = "outputs/results"
     history_file: str = "training_history.json"
-    logging_dir: Optional[str] = None
+    logging_dir: Optional[str] = "outputs/logs"
 
 
 @dataclass
@@ -74,12 +74,12 @@ class Config:
 
 ---
 
-## 2. Baseline values (`src/config/default.yaml`)
+## 2. Baseline values (`src/deepfake/config/default.yaml`)
 
 `default.yaml` mirrors the schema and ships the repository’s baseline settings:
 
 ```yaml
-# src/config/default.yaml
+# src/deepfake/config/default.yaml
 
 data:
   dataset_name: saberzl/SID_Set
@@ -118,10 +118,10 @@ training:
   seed: 42
 
 paths:
-  model_path: models/best_model.pth
-  results_dir: results
+  model_path: outputs/models/best_model.pth
+  results_dir: outputs/results
   history_file: training_history.json
-  logging_dir: null
+  logging_dir: outputs/logs
 ```
 
 These defaults remain untouched at runtime and serve as documentation plus a
@@ -129,32 +129,32 @@ fallback for any missing keys in user overrides.
 
 ---
 
-## 3. Override files (`classification.yaml`, `segmentation.yaml`, ...)
+## 3. Override files (`configs/classification.yaml`, `configs/segmentation.yaml`, ...)
 
-Override files live at the repository root and are passed explicitly via the
-`--config` CLI flag. Example:
+Override files live under `configs/` and are passed explicitly via the
+`--config` CLI flag. Example (after installing the package with `pip install -e .`):
 
 ```bash
-python main.py --train --task classification --config classification.yaml
-python main.py --train --task segmentation   --config segmentation.yaml
+deepfake-cli --train --task classification --config configs/classification.yaml
+deepfake-cli --train --task segmentation   --config configs/segmentation.yaml
 ```
 
 Each override file can change any subset of keys. When a key is omitted it
 falls back to `default.yaml` (and ultimately to dataclass defaults). You can
-create additional configs—e.g. `configs/large-run.yaml`—and point `--config` at
-that path.
+create additional configs—e.g. `cp configs/classification.yaml configs/large-run.yaml`—and point `--config`
+at that path.
 
 ---
 
-## 4. Loading configuration (`src/utils/config_loader.py`)
+## 4. Loading configuration (`src/deepfake/utils/config_loader.py`)
 
 `ConfigLoader` merges the schema + defaults + optional overrides and normalises
 paths so scripts work regardless of the current working directory:
 
 ```python
-from src.utils.config_loader import ConfigLoader
+from deepfake.utils.config_loader import ConfigLoader
 
-loader = ConfigLoader(config_path="classification.yaml")
+loader = ConfigLoader(config_path="configs/classification.yaml")
 cfg = loader.get_config()
 ```
 
@@ -175,11 +175,11 @@ Key behaviours:
 ### CLI helper
 
 ```bash
-# Inspect the merged configuration
-python -m src.utils.config_loader --config classification.yaml
+# Inspect the merged configuration (after `pip install -e .`)
+python -m deepfake.utils.config_loader --config configs/classification.yaml
 
 # Dump the baseline template somewhere else
-python -m src.utils.config_loader --dump-default --output my-config.yaml
+python -m deepfake.utils.config_loader --dump-default --output configs/custom.yaml
 # Add --force to overwrite an existing file
 ```
 

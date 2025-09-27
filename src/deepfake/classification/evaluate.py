@@ -7,14 +7,14 @@ from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix
 from torch.utils.data import DataLoader
 
-from src.config import Config
-from src.common.dataset_manager import SIDDatasetManager
-from src.common.visualize import (
+from deepfake.config import Config
+from deepfake.data.dataset_manager import SIDDatasetManager
+from deepfake.visualization.plots import (
     plot_classification_metrics,
     plot_confusion_matrix,
 )
-from src.utils.model_manager import check_model_exists, save_training_history
-from src.utils.logger import SidLogger
+from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.logger import SidLogger
 
 from .dataset import SIDClassificationDataset
 from .model import BaselineClassifier
@@ -32,28 +32,28 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     check_model_exists(cfg.paths.model_path)
 
-    manager = SIDDatasetManager(
+    with SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
         use_disk_cache=cfg.data.use_disk_cache,
-        use_streaming=cfg.data.use_streaming
-    )
-    _, _, test_ds = manager.get_splits(
-        train_max=0,
-        val_max=0,
-        test_max=cfg.data.test_samples,
-        test_offset=cfg.data.val_samples,
-    )
+        use_streaming=cfg.data.use_streaming,
+    ) as manager:
+        _, _, test_ds = manager.get_splits(
+            train_max=0,
+            val_max=0,
+            test_max=cfg.data.test_samples,
+            test_offset=cfg.data.val_samples,
+        )
 
     test_loader = DataLoader(
         SIDClassificationDataset(
             test_ds,
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std
+            normalize_std=cfg.model.normalize_std,
         ),
         batch_size=cfg.loader.batch_size,
         shuffle=cfg.loader.shuffle_test,
-        num_workers=cfg.loader.num_workers
+        num_workers=cfg.loader.num_workers,
     )
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
@@ -81,7 +81,7 @@ def evaluate(logger: SidLogger, cfg: Config):
         all_labels,
         all_preds,
         target_names=list(cfg.model.class_names),
-        output_dict=True
+        output_dict=True,
     )
     logger.log_classification_report(report_dict)
 
@@ -91,7 +91,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     results = {
         "accuracy": accuracy,
         "classification_report": report_dict,
-        "confusion_matrix": cm.tolist()
+        "confusion_matrix": cm.tolist(),
     }
     logger.save_json(results, "evaluation_results.json")
 

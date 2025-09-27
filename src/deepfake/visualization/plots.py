@@ -10,7 +10,7 @@ def _resolve_path(save_path, output_dir, default_filename):
         return Path(save_path)
     if output_dir:
         return Path(output_dir) / default_filename
-    return Path("results") / default_filename
+    return Path("outputs/results") / default_filename
 
 
 def plot_confusion_matrix(cm, class_names, *, save_path=None, output_dir=None):

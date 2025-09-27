@@ -8,17 +8,14 @@ data:
   use_disk_cache: true
 
 loader:
-  batch_size: 32
+  batch_size: 34
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
   num_workers: 4
 
 model:
-  class_names:
-    - Real
-    - Synthetic
-    - Tampered
+  tampered_label: 2
   normalize_mean:
     - 0.485
     - 0.456
@@ -30,11 +27,11 @@ model:
 
 training:
   epochs: 25
-  learning_rate: 0.0005
+  learning_rate: 0.0003
   seed: 42
 
 paths:
-  model_path: models/classification/best_model.pth
-  results_dir: results/classification
-  history_file: training_history.json
-  logging_dir: logs/classification
+  model_path: outputs/models/segmentation/segmentation_best_model.pth
+  results_dir: outputs/results/segmentation
+  history_file: segmentation_history.json
+  logging_dir: outputs/logs/segmentation

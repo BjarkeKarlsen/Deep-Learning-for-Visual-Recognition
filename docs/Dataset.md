@@ -46,8 +46,10 @@ def __init__(
 
 ### Usage Example
 
+Ensure the package is installed (e.g. `pip install -e .`) or that `PYTHONPATH` includes the repository's `src/` directory before importing modules from `deepfake`.
+
 ```python
-from dataset import SIDClassificationDataset
+from deepfake.classification.dataset import SIDClassificationDataset
 from torch.utils.data import DataLoader
 
 # Assume train_ds is an HF Dataset

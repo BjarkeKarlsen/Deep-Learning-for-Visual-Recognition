@@ -7,12 +7,12 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.common.dataset_manager import SIDDatasetManager
-from src.segmentation.dataset import TamperedSegmentationDataset
-from src.segmentation.model import TamperSegmentationModel
-from src.utils.logger import SidLogger
-from src.utils.model_manager import check_model_exists, save_training_history
-from src.config import Config
+from deepfake.data.dataset_manager import SIDDatasetManager
+from deepfake.segmentation.dataset import TamperedSegmentationDataset
+from deepfake.segmentation.model import TamperSegmentationModel
+from deepfake.utils.logger import SidLogger
+from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.config import Config
 
 
 def dice_and_iou(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> Dict[str, torch.Tensor]:
@@ -57,19 +57,18 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     check_model_exists(cfg.paths.model_path)
 
-    manager = SIDDatasetManager(
+    with SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
         use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    )
-
-    _, _, test_ds = manager.get_segmentation_splits(
-        tampered_label=getattr(cfg.model, "tampered_label", 2),
-        train_max=0,
-        val_max=0,
-        test_max=cfg.data.test_samples,
-        test_offset=cfg.data.val_samples,
-    )
+    ) as manager:
+        _, _, test_ds = manager.get_segmentation_splits(
+            tampered_label=getattr(cfg.model, "tampered_label", 2),
+            train_max=0,
+            val_max=0,
+            test_max=cfg.data.test_samples,
+            test_offset=cfg.data.val_samples,
+        )
 
     test_loader = prepare_dataloader(test_ds, cfg)
     if test_loader is None:

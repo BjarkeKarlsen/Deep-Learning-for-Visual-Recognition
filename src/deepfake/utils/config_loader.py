@@ -5,7 +5,7 @@ from typing import Optional
 
 from omegaconf import OmegaConf
 
-from src.config import Config
+from deepfake.config import Config
 
 try:
     import torch
@@ -22,7 +22,7 @@ class ConfigLoader:
     DEFAULT_TEMPLATE = "default.yaml"
 
     def __init__(self, config_path: Optional[str] = None):
-        repo_root = Path(__file__).resolve().parent.parent.parent
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
         self.default_config_path = Path(__file__).resolve().parent.parent / "config" / self.DEFAULT_TEMPLATE
         self.config_path = Path(config_path).expanduser() if config_path else None
         self.repo_root = repo_root
@@ -66,7 +66,9 @@ class ConfigLoader:
 
     def dump_default_config(self, destination: Optional[Path] = None, *, force: bool = False) -> Path:
         """Write the default configuration template to disk."""
-        destination = destination or (self.repo_root / self.DEFAULT_FILENAME)
+        default_destination = self.repo_root / "configs" / self.DEFAULT_FILENAME
+        destination = destination or default_destination
+        destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists() and not force:
             raise FileExistsError(
                 f"Refusing to overwrite existing file at {destination}. Use --force to override."

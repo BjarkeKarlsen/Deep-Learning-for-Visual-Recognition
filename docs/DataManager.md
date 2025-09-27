@@ -13,16 +13,16 @@ shared by both the classification and segmentation pipelines.
 - **Custom Split Caching** – derived subsets are stored under
   `~/.cache/huggingface/datasets/custom_splits/SID/<split>/` when
   `use_disk_cache=True`.
-- **Streaming Support** – when `use_streaming=True`, the manager uses the
-  Hugging Face iterable interface and materialises only the requested number of
-  samples for downstream processing.
+- **Streaming Support (temporarily degraded)** – setting `use_streaming=True` currently falls back to map-style datasets (with a warning) to avoid upstream resource shutdown issues.
 - **Segmentation Filtering** – `get_segmentation_splits` filters to samples that
   include masks and whose label matches `tampered_label` from the config.
 
 ### Usage
 
+Ensure the package is installed (e.g. `pip install -e .`) or that `PYTHONPATH` includes the repository's `src/` directory before importing from `deepfake`.
+
 ```python
-from src.common.dataset_manager import SIDDatasetManager
+from deepfake.data import SIDDatasetManager
 
 manager = SIDDatasetManager(
     dataset_name="saberzl/SID_Set",

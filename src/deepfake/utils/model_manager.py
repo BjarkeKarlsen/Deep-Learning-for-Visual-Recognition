@@ -8,7 +8,7 @@ def check_model_exists(model_path):
     if not os.path.exists(model_path):
         raise FileNotFoundError(
             f"Model file not found at {model_path}. "
-            "Please train/test the model first using: python main.py --train or --eval"
+            "Please train/test the model first using `deepfake-cli --train` or `--eval`."
         )
 
 

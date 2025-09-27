@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Command-line entry point for the Deepfake detection pipelines."""
+
+import argparse
+import torch.multiprocessing as mp
+
+from deepfake.classification import evaluate as classify_evaluate
+from deepfake.classification import train as classify_train
+from deepfake.segmentation import evaluate as segment_evaluate
+from deepfake.segmentation import train as segment_train
+from deepfake.utils.seed_manager import SeedManager
+from deepfake.utils.logger import SidLogger
+from deepfake.utils.config_loader import ConfigLoader
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Deepfake Detection Toolkit")
+    parser.add_argument("--train", action="store_true", help="Train the selected task pipeline")
+    parser.add_argument("--eval", action="store_true", help="Evaluate the selected task pipeline")
+    parser.add_argument(
+        "--task",
+        type=str,
+        required=True,
+        choices=["classification", "segmentation"],
+        help="Pipeline to execute",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Path to a YAML configuration override",
+    )
+    args = parser.parse_args()
+
+    loader = ConfigLoader(config_path=args.config)
+    cfg = loader.get_config()
+
+    seed_value = getattr(cfg.training, "seed", None) or 42
+    SeedManager(seed_value)
+
+    log_dir = cfg.paths.logging_dir or "outputs/logs"
+
+    if not (args.train or args.eval):
+        print("Please specify --train and/or --eval")
+        parser.print_help()
+        return
+
+    if args.task == "classification":
+        if args.train:
+            classify_train(SidLogger("classification-train", log_dir=log_dir), cfg)
+        if args.eval:
+            classify_evaluate(SidLogger("classification-eval", log_dir=log_dir), cfg)
+    else:
+        if args.train:
+            segment_train(SidLogger("segmentation-train", log_dir=log_dir), cfg)
+        if args.eval:
+            segment_evaluate(SidLogger("segmentation-eval", log_dir=log_dir), cfg)
+
+
+def entrypoint() -> None:
+    start_method = mp.get_start_method(allow_none=True)
+    if start_method != "spawn":
+        mp.set_start_method(
+            "spawn",
+            force=True,
+        )
+    main()
+
+
+if __name__ == "__main__":
+    entrypoint()

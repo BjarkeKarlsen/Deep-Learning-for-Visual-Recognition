@@ -8,13 +8,13 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.common.dataset_manager import SIDDatasetManager
-from src.common.visualize import plot_segmentation_curves
-from src.segmentation.dataset import TamperedSegmentationDataset
-from src.segmentation.model import TamperSegmentationModel
-from src.utils.logger import SidLogger
-from src.utils.model_manager import save_training_history
-from src.config import Config
+from deepfake.data.dataset_manager import SIDDatasetManager
+from deepfake.visualization.plots import plot_segmentation_curves
+from deepfake.segmentation.dataset import TamperedSegmentationDataset
+from deepfake.segmentation.model import TamperSegmentationModel
+from deepfake.utils.logger import SidLogger
+from deepfake.utils.model_manager import save_training_history
+from deepfake.config import Config
 
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
@@ -54,18 +54,17 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     device = torch.device(cfg.training.device)
     logger.log_training_config(asdict(cfg))
 
-    manager = SIDDatasetManager(
+    with SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
         use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    )
-
-    train_ds, val_ds, _ = manager.get_segmentation_splits(
-        tampered_label=getattr(cfg.model, "tampered_label", 2),
-        train_max=cfg.data.train_samples,
-        val_max=cfg.data.val_samples,
-        test_max=None,
-    )
+    ) as manager:
+        train_ds, val_ds, _ = manager.get_segmentation_splits(
+            tampered_label=getattr(cfg.model, "tampered_label", 2),
+            train_max=cfg.data.train_samples,
+            val_max=cfg.data.val_samples,
+            test_max=None,
+        )
 
     train_loader = prepare_dataloader(train_ds, cfg, shuffle=cfg.loader.shuffle_train)
     if train_loader is None:
@@ -74,7 +73,6 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     val_loader = prepare_dataloader(val_ds, cfg, shuffle=False)
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
-    # Binary tamper-vs-background segmentation pairs naturally with BCE on logits.
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
 
@@ -143,8 +141,6 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             f"Epoch {epoch+1}: val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
         )
 
-        # Dice better captures segmentation overlap than raw loss, so we use it for early stopping.
-        # Fall back to the training dice when validation data is unavailable.
         metric_to_compare = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
         if best_val_dice is None or metric_to_compare > best_val_dice:
             best_val_dice = metric_to_compare

@@ -45,10 +45,10 @@ class TrainingConfig:
 
 @dataclass
 class PathsConfig:
-    model_path: str = "models/best_model.pth"
-    results_dir: str = "results"
+    model_path: str = "outputs/models/best_model.pth"
+    results_dir: str = "outputs/results"
     history_file: str = "training_history.json"
-    logging_dir: Optional[str] = None
+    logging_dir: Optional[str] = "outputs/logs"
 
 
 @dataclass

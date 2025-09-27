@@ -70,20 +70,17 @@ cover/
 # Experiment tracking
 wandb/
 lightning_logs/
-deepfake/lightning_logs/
 
 # Project artifacts
 *.pth
 *.pt
 *.ckpt
-deepfake/models/
-deepfake/results/
-deepfake/logs/
-deepfake/docs/_build/
+docs/_build/
 
 # Dataset downloads and caches
 data/
-deepfake/data/
 data/cache/
-deepfake/data/cache/
 .cache/
+
+# New project artefact roots
+outputs/
