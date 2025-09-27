@@ -30,7 +30,7 @@ The code auto-selects `cuda` when a GPU is available; otherwise it falls back to
   - `segmentation.yaml` – tailored to `--task segmentation`.
 - Copy either file if you need a variant, e.g. `cp classification.yaml configs/large-batch.yaml`, then update paths and hyperparameters inside the YAML.
 - Keep `paths.model_path`, `paths.results_dir`, and `paths.logging_dir` unique per pipeline so checkpoints and logs never collide. The provided defaults already isolate outputs under `models/<task>/` and `results/<task>/`.
-- Streaming is enabled by default via `data.use_streaming: true` to avoid downloading the entire dataset. Switch it to `false` when you want Hugging Face to manage an on-disk cache instead.
+- The sample configs default to `data.use_streaming: false` so subsets are cached locally. Set it to `true` if you'd rather stream directly from Hugging Face without downloading everything.
 
 See `docs/Configuration.md` for field-by-field details.
 

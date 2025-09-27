@@ -56,8 +56,10 @@ class ConfigLoader:
                 cfg.training.device = "cuda"
             else:
                 cfg.training.device = "cpu"
-        self._normalize_paths(cfg)
-        return cfg
+
+        cfg_obj: Config = OmegaConf.to_object(cfg)
+        self._normalize_paths(cfg_obj)
+        return cfg_obj
 
     def get_config(self) -> Config:
         return self.cfg
@@ -85,7 +87,7 @@ class ConfigLoader:
             raise FileNotFoundError(f"Expected configuration file at {path}")
         return OmegaConf.load(path)
 
-    def _normalize_paths(self, cfg) -> None:
+    def _normalize_paths(self, cfg: Config) -> None:
         cfg.paths.model_path = self._resolve_repo_path(cfg.paths.model_path)
         cfg.paths.results_dir = self._resolve_repo_path(cfg.paths.results_dir)
         if cfg.paths.logging_dir:

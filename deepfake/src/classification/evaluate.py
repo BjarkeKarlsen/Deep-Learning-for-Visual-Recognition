@@ -24,7 +24,6 @@ def evaluate(logger: SidLogger, cfg: Config):
     """Run classification inference and report accuracy/diagnostics."""
     device = torch.device(cfg.training.device)
 
-    # Log evaluation configuration
     logger.log_evaluation_config(asdict(cfg))
 
     logger.info("=" * 60)
@@ -57,7 +56,6 @@ def evaluate(logger: SidLogger, cfg: Config):
         num_workers=cfg.loader.num_workers
     )
 
-    # Load model
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     model.load_state_dict(torch.load(cfg.paths.model_path, map_location=device))
     model.eval()
@@ -76,11 +74,9 @@ def evaluate(logger: SidLogger, cfg: Config):
                 all_preds.extend(predicted.cpu().numpy())
                 all_labels.extend(labels.numpy())
 
-    # Compute metrics
     accuracy = 100 * np.mean(np.array(all_preds) == np.array(all_labels))
     logger.info(f"Overall Accuracy: {accuracy:.2f}%")
 
-    # Classification report
     report_dict = classification_report(
         all_labels,
         all_preds,
@@ -89,11 +85,9 @@ def evaluate(logger: SidLogger, cfg: Config):
     )
     logger.log_classification_report(report_dict)
 
-    # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
     logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
 
-    # Save raw results JSON
     results = {
         "accuracy": accuracy,
         "classification_report": report_dict,
@@ -101,7 +95,6 @@ def evaluate(logger: SidLogger, cfg: Config):
     }
     logger.save_json(results, "evaluation_results.json")
 
-    # Save training history file
     save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
 
     logger.info("Generating visualizations...")

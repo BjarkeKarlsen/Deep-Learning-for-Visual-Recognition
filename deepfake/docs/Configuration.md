@@ -83,7 +83,7 @@ class Config:
 
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 512
+  image_size: 224
   train_samples: 10
   val_samples: 10
   test_samples: 10
@@ -113,7 +113,7 @@ model:
   tampered_label: 2
 
 training:
-  epochs: 100
+  epochs: 10
   learning_rate: 0.001
   seed: 42
 

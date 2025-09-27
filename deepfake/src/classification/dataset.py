@@ -34,7 +34,7 @@ class SIDClassificationDataset(Dataset):
         self.normalize_mean = normalize_mean
         self.normalize_std  = normalize_std
 
-        # Set default transforms if not provided
+        # Default to the segmentation-style preprocessing so outputs stay aligned across tasks.
         if transform is None:
             self.transform = Compose([
                 self.to_rgb,
@@ -52,7 +52,7 @@ class SIDClassificationDataset(Dataset):
                     (self.image_size, self.image_size),
                     interpolation=InterpolationMode.NEAREST,
                 ),
-                Grayscale(num_output_channels=1),  # keep masks compatible with segmentation outputs
+                Grayscale(num_output_channels=1),  # Keep mask tensors compatible with the segmentation pipeline
                 ToImage(),
                 ToDtype(torch.float32, scale=True)
             ])

@@ -31,7 +31,7 @@ class ModelConfig:
     tampered_label: int = 2
 
     def __post_init__(self) -> None:
-        # derive the number of classes from the class_names list
+        # Cache the class count so downstream consumers skip recomputing len(class_names).
         self.num_classes = len(self.class_names)
 
 
@@ -40,7 +40,7 @@ class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
     seed: int = 42
-    device: str = "cpu"  # auto-filled at runtime
+    device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
 
 
 @dataclass

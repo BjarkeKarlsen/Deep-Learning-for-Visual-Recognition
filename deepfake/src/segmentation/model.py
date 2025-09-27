@@ -2,89 +2,71 @@ import torch
 import torch.nn as nn
 
 
-class ResidualBlock(nn.Module):
-    """Two-conv residual block with optional channel projection and dropout."""
+class ConvBlock(nn.Module):
+    """Two plain conv layers with batch norm and ReLU activation."""
 
-    def __init__(self, in_channels: int, out_channels: int, dropout: float = 0.0):
+    def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.activation = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout2d(dropout) if dropout > 0.0 else nn.Identity()
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-
-        if in_channels != out_channels:
-            self.proj = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
-            self.proj_bn = nn.BatchNorm2d(out_channels)
-        else:
-            self.proj = None
+        self.layers = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        residual = x
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.activation(out)
-        out = self.dropout(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.proj is not None:
-            residual = self.proj(residual)
-            residual = self.proj_bn(residual)
-
-        out += residual
-        out = self.activation(out)
-        return out
+        return self.layers(x)
 
 
 class DecoderBlock(nn.Module):
-    """Upsample then refine with a residual block."""
+    """Bilinear upsampling followed by feature fusion and refinement."""
 
     def __init__(
         self,
         in_channels: int,
         skip_channels: int,
         out_channels: int,
-        dropout: float = 0.0,
     ):
         super().__init__()
-        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
-        self.block = ResidualBlock(out_channels + skip_channels, out_channels, dropout)
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.reduce = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.block = ConvBlock(out_channels + skip_channels, out_channels)
 
     def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
         x = self.up(x)
+        x = self.reduce(x)
         x = torch.cat([x, skip], dim=1)
         return self.block(x)
 
 
 class TamperSegmentationModel(nn.Module):
-    """Residual U-Net variant tuned for tamper mask prediction."""
+    """Lightweight U-Net variant tuned for tamper mask prediction."""
 
     def __init__(
         self,
         in_channels: int = 3,
         out_channels: int = 1,
-        base_width: int = 32,
-        dropout: float = 0.1,
+        base_width: int = 16,
     ):
         super().__init__()
 
         widths = [base_width, base_width * 2, base_width * 4, base_width * 8]
 
-        self.enc1 = ResidualBlock(in_channels, widths[0], dropout)
-        self.enc2 = ResidualBlock(widths[0], widths[1], dropout)
-        self.enc3 = ResidualBlock(widths[1], widths[2], dropout)
-        self.enc4 = ResidualBlock(widths[2], widths[3], dropout)
+        self.enc1 = ConvBlock(in_channels, widths[0])
+        self.enc2 = ConvBlock(widths[0], widths[1])
+        self.enc3 = ConvBlock(widths[1], widths[2])
+        self.enc4 = ConvBlock(widths[2], widths[3])
 
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.bottleneck = ResidualBlock(widths[3], widths[3] * 2, dropout)
+        self.bottleneck = ConvBlock(widths[3], widths[3] * 2)
 
-        self.dec4 = DecoderBlock(widths[3] * 2, widths[3], widths[3], dropout)
-        self.dec3 = DecoderBlock(widths[3], widths[2], widths[2], dropout)
-        self.dec2 = DecoderBlock(widths[2], widths[1], widths[1], dropout)
-        self.dec1 = DecoderBlock(widths[1], widths[0], widths[0], dropout)
+        self.dec4 = DecoderBlock(widths[3] * 2, widths[3], widths[3])
+        self.dec3 = DecoderBlock(widths[3], widths[2], widths[2])
+        self.dec2 = DecoderBlock(widths[2], widths[1], widths[1])
+        self.dec1 = DecoderBlock(widths[1], widths[0], widths[0])
 
         self.head = nn.Conv2d(widths[0], out_channels, kernel_size=1)
 

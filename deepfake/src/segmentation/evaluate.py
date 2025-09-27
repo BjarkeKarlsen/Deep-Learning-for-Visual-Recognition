@@ -18,7 +18,7 @@ from src.config import Config
 def dice_and_iou(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> Dict[str, torch.Tensor]:
     """Compute dataset-level overlap metrics for binary tamper masks."""
     probs = torch.sigmoid(logits)
-    preds = (probs > 0.5).float()  # default binary threshold for tamper vs. background
+    preds = (probs > 0.5).float()  # 0.5 aligns with the binary tamper-versus-background assumption
     targets = (targets > 0.5).float()
 
     intersection = (preds * targets).sum(dim=(1, 2, 3))

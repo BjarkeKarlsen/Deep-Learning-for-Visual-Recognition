@@ -45,7 +45,7 @@ class SidLogger:
         self._logger.handlers.clear()
         self._logger.setLevel(self.level)
 
-        # Detailed formatter for file, simple for console
+        # File logs retain callsite context while console output stays concise.
         detailed = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
         )

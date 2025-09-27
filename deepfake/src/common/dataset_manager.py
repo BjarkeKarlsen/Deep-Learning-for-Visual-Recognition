@@ -17,10 +17,7 @@ def _has_mask_with_label(example, *, target_label: int) -> bool:
 
 
 class SIDDatasetManager:
-    """
-    Manages loading, splitting, optional streaming, and caching
-    for the Hugging Face SID dataset, always using HF cache locations.
-    """
+    """Coordinate SID dataset loading, custom split materialisation, and caching."""
     def __init__(
         self,
         dataset_name: str,
@@ -33,7 +30,7 @@ class SIDDatasetManager:
         self._cached_splits: Dict[str, Dataset] = {}
 
     def _ensure_indexable_split(self, split: str) -> Dataset:
-        """Materialise streaming splits into map-style datasets when needed."""
+        """Materialise streaming splits so downstream code retains random access."""
         ds = self._get_base_split(split)
         if isinstance(ds, IterableDataset):
             if self.use_streaming:
@@ -41,9 +38,7 @@ class SIDDatasetManager:
                     f"Split '{split}' is in streaming mode; random access is unavailable. "
                     "Provide an explicit sample cap or disable streaming."
                 )
-            # Hugging Face may yield iterable shards even for cached datasets. In
-            # that scenario we still materialise once so downstream code can rely
-            # on random access semantics (len/index/select).
+            # Some HF snapshots still expose iterable shards; materialise once to preserve len/index/select semantics.
             materialised = self._slice_split(ds, max_samples=None)
             self._cached_splits[split] = materialised
             return materialised
@@ -80,7 +75,7 @@ class SIDDatasetManager:
         test_offset: int,
         use_official_test: bool,
     ) -> Tuple[Dataset, Dataset, Dataset]:
-        """Materialise bounded subsets while preserving streaming semantics."""
+        """Materialise bounded train/val/test subsets while preserving streaming semantics."""
 
         splits = self.load_dataset()
         if "train" not in splits:
@@ -170,7 +165,7 @@ class SIDDatasetManager:
         test_max: Optional[int],
         test_offset: int,
     ) -> Tuple[Tuple[int, int], Optional[Tuple[int, int]]]:
-        """Compute disjoint ranges for validation and test subsets."""
+        """Compute half-open index ranges for validation and optional test subsets."""
 
         holdout_start = max(0, min(holdout_start, total_length))
         available = max(0, total_length - holdout_start)
@@ -217,7 +212,7 @@ class SIDDatasetManager:
         ds: Dataset,
         exclude_ranges: List[Tuple[int, int]],
     ) -> Dataset:
-        """Return dataset with the provided ranges (inclusive/exclusive) removed."""
+        """Return a dataset view with the provided half-open intervals removed."""
 
         if not exclude_ranges:
             return ds
@@ -250,21 +245,21 @@ class SIDDatasetManager:
         return concatenate_datasets(segments)
 
     def _get_hf_cache_dir(self) -> str:
-        """Get the HuggingFace cache directory being used."""
-        # Check environment variables in order of precedence
+        """Resolve the Hugging Face cache directory respecting env overrides."""
+        # Honor environment overrides from most specific to least specific.
         hf_datasets_cache = os.environ.get('HF_DATASETS_CACHE')
         if hf_datasets_cache:
             return hf_datasets_cache
-            
+
         hf_home = os.environ.get('HF_HOME')
         if hf_home:
             return os.path.join(hf_home, 'datasets')
-            
-        # Default HF location
+
+        # Fall back to Hugging Face's conventional cache path.
         return os.path.expanduser('~/.cache/huggingface/datasets')
 
     def _cache_path(self, split: str, *, identifier: Optional[str] = None) -> str:
-        """Generate cache path scoped by dataset + split parameters."""
+        """Generate a deterministic cache path scoped by dataset and split options."""
         hf_cache = self._get_hf_cache_dir()
         dataset_slug = self.dataset_name.replace("/", "__")
         parts = [split]
@@ -274,9 +269,7 @@ class SIDDatasetManager:
         return cache_dir
 
     def load_dataset(self) -> Dict[str, Dataset]:
-        """
-        Load (streaming or regular) dataset using HF's caching system.
-        """
+        """Load the SID dataset (streaming or map-style) and memoize its splits locally."""
         if not self._cached_splits:
             print(f"Loading dataset {self.dataset_name} from Hugging Face...")
 
@@ -287,9 +280,7 @@ class SIDDatasetManager:
 
             for split, ds in full.items():
                 if isinstance(ds, IterableDataset) and not self.use_streaming:
-                    # Hugging Face sometimes returns iterables even for local
-                    # caches; materialise once so PyTorch-style random access
-                    # (len, indexing, shuffling) remains available downstream.
+                    # HF may return iterable shards even from local cache; materialise once to restore random access APIs.
                     records = list(ds)
                     ds = Dataset.from_list(records)
                 self._cached_splits[split] = ds
@@ -307,10 +298,7 @@ class SIDDatasetManager:
         max_samples: Optional[int],
         start: int = 0
     ) -> Dataset:
-        """
-        For streaming: use .take(max_samples) then Dataset.from_list.
-        For regular: use .select(range(start, start+max_samples)).
-        """
+        """Return a contiguous slice, materialising iterables when streaming semantics require it."""
         if isinstance(ds, IterableDataset):
             iterator = ds
             if start:
@@ -356,9 +344,7 @@ class SIDDatasetManager:
         derive_from: Optional[str] = None,
         start: int = 0
     ) -> Dataset:
-        """
-        Load (or derive) a split, optionally cache it in HF cache structure.
-        """
+        """Load or derive a split and optionally persist it inside the HF cache hierarchy."""
         if self.use_streaming and max_samples is None:
             raise ValueError(
                 "Streaming mode requires 'max_samples' to be specified when "
@@ -376,7 +362,7 @@ class SIDDatasetManager:
 
         path = self._cache_path(split, identifier=identifier)
         
-        # 1) Load from disk if cached (only for custom splits)
+        # Step 1: reuse any cached materialisation for derived splits when present.
         if (
             self.use_disk_cache
             and derive_from is not None  # Only custom splits are cached
@@ -386,7 +372,7 @@ class SIDDatasetManager:
             print(f"Loading {split} split from HF cache: {path}")
             return load_from_disk(path)
 
-        # 2) Build the split
+        # Step 2: build the split from its source dataset.
         if derive_from:
             base = self._get_base_split(derive_from)
             ds = self._slice_split(base, max_samples, start)
@@ -394,17 +380,17 @@ class SIDDatasetManager:
             base = self._get_base_split(split)
             ds = self._slice_split(base, max_samples)
 
-        # 3) Cache custom splits in HF cache structure
+        # Step 3: cache custom splits for reuse in future runs.
         if derive_from and self.use_disk_cache:
             try:
                 length = len(ds)
             except TypeError:
-                # For streaming ds, convert to list temporarily to get length
+                # Streaming datasets may not expose len(); sample into a list once to compute it for logging/cache checks.
                 tmp = list(ds.take(max_samples or 1))
                 length = len(tmp)
-                
+
             if length > 0:
-                # Ensure cache directory exists
+                # Create the parent directory before persisting the derived split.
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 print(f"Caching custom {split} split to HF cache: {path}")
                 ds.save_to_disk(path)
@@ -422,9 +408,7 @@ class SIDDatasetManager:
         test_offset: int = 0,
         use_official_test: bool = False
     ) -> Tuple[Dataset, Dataset, Dataset]:
-        """
-        Return (train, validation, test) datasets, all cached in HF locations.
-        """
+        """Return train/validation/test splits, caching any derived subsets for reuse."""
         if self.use_streaming:
             return self._get_streaming_splits(
                 train_max=train_max,
@@ -438,7 +422,7 @@ class SIDDatasetManager:
         has_validation = "validation" in splits
         use_official_test_split = use_official_test and "test" in splits
 
-        # Prepare validation (and optional derived test) from its source split.
+        # Prepare validation/test holdouts straight from the dedicated validation split when available.
         if has_validation:
             needs_holdout_math = (val_max is None) or (not use_official_test_split)
             if needs_holdout_math:
@@ -479,9 +463,9 @@ class SIDDatasetManager:
                     else:
                         test_ds = val_source.select([])
                 else:
-                    test_ds = None  # Filled later from official split.
+                    test_ds = None  # Populated later if we switch to the official test split.
             else:
-                # Simple subset of validation; no need to materialise entire split.
+                # With explicit caps, subset validation directly without running holdout math.
                 val_ds = self._load_or_cache_split(
                     "validation_subset",
                     max_samples=val_max,
@@ -489,8 +473,7 @@ class SIDDatasetManager:
                     start=0,
                 )
                 test_ds = None
-
-            # Training split: derived directly from HF train split.
+            # Training samples come straight from the HF train split unless capped.
             if train_max is None:
                 train_ds = self._ensure_indexable_split("train")
             else:
@@ -499,7 +482,7 @@ class SIDDatasetManager:
                 )
 
         else:
-            # Derive validation/test from the training split tail.
+            # Fall back to carving validation/test holdouts out of the train split tail.
             train_indexable = self._ensure_indexable_split("train")
             train_length = len(train_indexable)
             holdout_start = max(0, train_length - val_offset)
@@ -549,7 +532,7 @@ class SIDDatasetManager:
             else:
                 train_ds = self._slice_split(train_without_holdout, max_samples=train_max)
 
-        # If requested, use the official test split (optionally sub-sampled).
+        # Optionally swap in the official test split, respecting any provided cap.
         if use_official_test_split:
             if test_max is None:
                 test_ds = self._ensure_indexable_split("test")
@@ -568,6 +551,7 @@ class SIDDatasetManager:
         tampered_label: int,
         max_samples: Optional[int],
     ) -> Dataset:
+        """Filter a split to tampered samples and optionally persist the result."""
         if ds is None:
             return ds
 
@@ -635,9 +619,7 @@ class SIDDatasetManager:
             use_official_test=use_official_test,
         )
 
-        # Each segmentation subset keeps only samples where the selected label
-        # includes a tamper mask. This avoids wasting GPU time on negatives that
-        # cannot contribute to pixel-level supervision.
+        # Retain only samples with a tamper mask so GPUs are not wasted on negatives with no pixel supervision signal.
         train_ds = self._filter_segmentation_split(
             base_train,
             cache_key="train_tampered",
@@ -662,7 +644,7 @@ class SIDDatasetManager:
         return train_ds, val_ds, test_ds
 
     def get_cache_info(self) -> Dict[str, str]:
-        """Get information about cache directories being used."""
+        """Summarise active cache directories along with relevant environment overrides."""
         hf_cache = self._get_hf_cache_dir()
         custom_splits_cache = os.path.join(hf_cache, "custom_splits", "SID")
         
@@ -671,7 +653,7 @@ class SIDDatasetManager:
             "custom_splits_cache": custom_splits_cache,
         }
         
-        # Add environment variables info
+        # Include environment overrides for easier cache-debugging downstream.
         for env_var in ['HF_HOME', 'HF_DATASETS_CACHE']:
             info[env_var] = os.environ.get(env_var, "Not set")
             
