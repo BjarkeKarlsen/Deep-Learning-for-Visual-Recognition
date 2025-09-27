@@ -13,7 +13,7 @@ shared by both the classification and segmentation pipelines.
 - **Custom Split Caching** – derived subsets are stored under
   `~/.cache/huggingface/datasets/custom_splits/SID/<split>/` when
   `use_disk_cache=True`.
-- **Streaming Support (temporarily degraded)** – setting `use_streaming=True` currently falls back to map-style datasets (with a warning) to avoid upstream resource shutdown issues.
+- **Streaming Support (temporarily degraded)** – setting `use_streaming=True` currently emits a warning and falls back to map-style datasets until Hugging Face fixes the streaming shutdown bug.
 - **Segmentation Filtering** – `get_segmentation_splits` filters to samples that
   include masks and whose label matches `tampered_label` from the config.
 

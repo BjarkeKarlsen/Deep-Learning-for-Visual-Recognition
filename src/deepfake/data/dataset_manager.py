@@ -26,15 +26,16 @@ class SIDDatasetManager:
     ):
         self.dataset_name = dataset_name
         self.use_disk_cache = use_disk_cache
-        if use_streaming:
+        self.use_streaming = use_streaming
+        self._streaming_requested = use_streaming
+        if self.use_streaming:
             import warnings
             warnings.warn(
-                "Streaming mode is temporarily disabled; falling back to map-style datasets to avoid Python shutdown issues.",
+                "Streaming mode currently leads to unstable shutdown; it will be disabled until the upstream fix lands.",
                 RuntimeWarning,
                 stacklevel=2,
             )
-        self.use_streaming = False
-        self._streaming_requested = use_streaming
+            self.use_streaming = False
         self._cached_splits: Dict[str, Dataset] = {}
 
     def _ensure_indexable_split(self, split: str) -> Dataset:
@@ -615,12 +616,20 @@ class SIDDatasetManager:
     def close(self) -> None:
         """Release cached streaming datasets so background workers shut down cleanly."""
         if self.use_streaming and self._cached_splits:
-            self._cached_splits.clear()
             try:
-                import gc
-                gc.collect()
+                iterable_datasets = [ds for ds in self._cached_splits.values() if isinstance(ds, IterableDataset)]
+                for ds in iterable_datasets:
+                    try:
+                        ex_iter = getattr(ds, '_ex_iterable', None)
+                        if ex_iter is not None:
+                            close_fn = getattr(ex_iter, '__del__', None)
+                            if close_fn is not None:
+                                close_fn()
+                    except Exception:
+                        pass
             except Exception:
                 pass
+        self._cached_splits.clear()
 
     def __enter__(self):
         return self
