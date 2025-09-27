@@ -78,8 +78,8 @@ lightning_logs/
 docs/_build/
 
 # Dataset downloads and caches
-data/
-data/cache/
+/data/
+/data/cache/
 .cache/
 
 # New project artefact roots
