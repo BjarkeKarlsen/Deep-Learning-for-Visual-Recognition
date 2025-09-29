@@ -20,15 +20,62 @@ Both share a common configuration system, logging utilities, dataset manager, an
 ---
 
 ## 1. Environment Setup
+This guide walks you through setting up the environment for using the Deepfake Toolkit, including both CPU and GPU configurations.
 
+### 1. Conda
+Create a new Conda environment with Python 3.12:
 ```bash
-python -m venv .venv           # or use conda
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e .
+conda create -n deepfake-env python=3.12 -y
 ```
 
-CUDA is auto-selected when available; otherwise the toolchain falls back to CPU.
+Activate the environment:
+```bash
+conda activate deepfake-env
+```
+
+#### 2. Editable Installation (Development Mode)
+If you want to install the package in editable mode for development purposes, use one of the following commands depending on your hardware:
+
+```bash
+pip install -e .[cpu]
+```
+Or
+```bash
+pip install -e .[gpu]
+```
+
+#### 3. Installing Deepfake CLI and Project Dependencies
+Alternatively, if you want to install the released version of the package from PyPI or another package index, follow these instructions for a stable, versioned installation without modifying the source code. This is the recommended approach if you are a user or deploying the tool.
+
+##### 1. CPU Installation
+
+If you are using a CPU-only machine, install the CPU dependencies with:
+
+```bash
+pip install deepfake-toolkit[cpu]
+```
+
+#### 2. GPU Installation
+If you have a compatible GPU and CUDA installed, install the GPU-enabled dependencies with:
+```bash
+pip install deepfake-toolkit[gpu]
+```
+
+#### 4. Using a Virtual Environment (Optional)
+
+If you prefer using a Python virtual environment instead of Conda:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e . [cpu] # [gpu]
+```
+
+### 7. Notes
+
+- CUDA support is auto-detected when available; otherwise, the toolkit defaults to CPU.
+- Choose the installation method (CPU or GPU) based on your hardware capabilities.
+- For Conda users, the recommended Python version is 3.12 to ensure compatibility.
 
 ---
 
