@@ -37,11 +37,12 @@ conda activate deepfake-env
 If you want to install the package in editable mode for development purposes, use one of the following commands depending on your hardware:
 
 ```bash
-pip install -e .[cpu]
+pip install -e .
 ```
 Or
 ```bash
-pip install -e .[gpu]
+conda install pytorch torchvision pytorch-cuda=12.8 -c conda-forge -c nvidia
+pip install -e .
 ```
 
 #### 3. Installing Deepfake CLI and Project Dependencies
@@ -52,13 +53,14 @@ Alternatively, if you want to install the released version of the package from P
 If you are using a CPU-only machine, install the CPU dependencies with:
 
 ```bash
-pip install deepfake-toolkit[cpu]
+pip install deepfake-toolkit
 ```
 
 #### 2. GPU Installation
 If you have a compatible GPU and CUDA installed, install the GPU-enabled dependencies with:
 ```bash
-pip install deepfake-toolkit[gpu]
+conda install pytorch torchvision pytorch-cuda=12.8 -c conda-forge -c nvidia
+pip install deepfake-toolkit
 ```
 
 #### 4. Using a Virtual Environment (Optional)
@@ -68,7 +70,7 @@ If you prefer using a Python virtual environment instead of Conda:
 python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -e . [cpu] # [gpu]
+pip install -e .
 ```
 
 ### 7. Notes
