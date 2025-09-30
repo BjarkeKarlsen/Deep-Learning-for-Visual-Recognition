@@ -20,14 +20,20 @@ def main() -> None:
     parser.add_argument(
         "--task",
         type=str,
-        required=True,
         choices=["classification", "segmentation"],
         help="Pipeline to execute",
     )
+    
+    parser.add_argument(
+        '--plot',
+        type=str,
+        choices=["classification", "segmentation"],
+        help='Create plots from training history JSON file.'
+    )
+        
     parser.add_argument(
         "--config",
         type=str,
-        required=True,
         help="Path to a YAML configuration override",
     )
     args = parser.parse_args()
@@ -40,21 +46,30 @@ def main() -> None:
 
     log_dir = cfg.paths.logging_dir or "outputs/logs"
 
-    if not (args.train or args.eval):
-        print("Please specify --train and/or --eval")
-        parser.print_help()
-        return
-
-    if args.task == "classification":
+    if args.task == cfg.Task.CLASSIFICATION:
         if args.train:
             classify_train(SidLogger("classification-train", log_dir=log_dir), cfg)
         if args.eval:
             classify_evaluate(SidLogger("classification-eval", log_dir=log_dir), cfg)
-    else:
+    elif args.task == cfg.Task.SEGMENTATION:
         if args.train:
             segment_train(SidLogger("segmentation-train", log_dir=log_dir), cfg)
         if args.eval:
             segment_evaluate(SidLogger("segmentation-eval", log_dir=log_dir), cfg)
+    elif args.plot:
+        if args.plot == cfg.Task.CLASSIFICATION:
+            print("Plotting classification metrics...")
+            # Placeholder for actual plotting function
+            # plot_classification_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+        elif args.plot == cfg.Task.SEGMENTATION:
+            print("Plotting segmentation metrics...")
+            # Placeholder for actual plotting function
+            # plot_segmentation_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+    else:
+        print(f"Unknown task: {args.task}")
+        parser.print_help()
+        return
+
 
 
 def entrypoint() -> None:
