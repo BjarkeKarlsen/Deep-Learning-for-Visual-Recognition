@@ -10,8 +10,8 @@ authors = [{name = "Deepfake Toolkit"}]
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "torch",
-    "torchvision",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
     "datasets",
     "pillow",
     "tqdm",
@@ -21,6 +21,7 @@ dependencies = [
     "seaborn",
     "omegaconf",
     "pandas",
+    "hf_xet",
 ]
 
 [tool.setuptools]

@@ -20,15 +20,64 @@ Both share a common configuration system, logging utilities, dataset manager, an
 ---
 
 ## 1. Environment Setup
+This guide walks you through setting up the environment for using the Deepfake Toolkit, including both CPU and GPU configurations.
+
+### 1. Conda
+Create a new Conda environment with Python 3.12:
+```bash
+conda create -n deepfake-env python=3.12 -y
+```
+
+Activate the environment:
+```bash
+conda activate deepfake-env
+```
+
+#### 2. Editable Installation (Development Mode)
+If you want to install the package in editable mode for development purposes, use one of the following commands depending on your hardware:
 
 ```bash
-python -m venv .venv           # or use conda
+pip install -e .
+```
+Or
+```bash
+conda install pytorch torchvision pytorch-cuda=12.8 -c conda-forge -c nvidia
+pip install -e .
+```
+
+#### 3. Installing Deepfake CLI and Project Dependencies
+Alternatively, if you want to install the released version of the package from PyPI or another package index, follow these instructions for a stable, versioned installation without modifying the source code. This is the recommended approach if you are a user or deploying the tool.
+
+##### 1. CPU Installation
+
+If you are using a CPU-only machine, install the CPU dependencies with:
+
+```bash
+pip install deepfake-toolkit
+```
+
+#### 2. GPU Installation
+If you have a compatible GPU and CUDA installed, install the GPU-enabled dependencies with:
+```bash
+conda install pytorch torchvision pytorch-cuda=12.8 -c conda-forge -c nvidia
+pip install deepfake-toolkit
+```
+
+#### 4. Using a Virtual Environment (Optional)
+
+If you prefer using a Python virtual environment instead of Conda:
+```bash
+python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e .
 ```
 
-CUDA is auto-selected when available; otherwise the toolchain falls back to CPU.
+### 7. Notes
+
+- CUDA support is auto-detected when available; otherwise, the toolkit defaults to CPU.
+- Choose the installation method (CPU or GPU) based on your hardware capabilities.
+- For Conda users, the recommended Python version is 3.12 to ensure compatibility.
 
 ---
 
