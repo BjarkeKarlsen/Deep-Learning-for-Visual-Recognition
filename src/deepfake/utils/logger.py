@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 
-class SidLogger:
+class SidLogger(logging.Logger):
     """Experiment logger with console/file sinks, metric formatters, and timing helpers."""
 
     def __init__(
@@ -80,21 +80,33 @@ class SidLogger:
         self.logger.info("=" * 60)
 
     def log_training_config(self, config: Dict[str, Any]):
-        """Log the resolved training configuration dictionary one key per line."""
+        """Log the resolved training configuration dictionary one key per line in a readable format."""
         self.logger.info("=" * 60)
         self.logger.info("TRAINING CONFIGURATION")
         self.logger.info("=" * 60)
-        for k, v in config.items():
-            self.logger.info(f"{k}: {v}")
+        for section, values in config.items():
+            self.logger.info(f"{section.capitalize()}:")
+            if isinstance(values, dict):
+                for k, v in values.items():
+                    self.logger.info(f"  {k}: {v}")
+            else:
+                self.logger.info(f"  {values}")
+            self.logger.info("")
         self.logger.info("=" * 60)
-
+    
     def log_evaluation_config(self, config: Dict[str, Any]):
         """Log the resolved evaluation configuration dictionary one key per line."""
         self.logger.info("=" * 60)
         self.logger.info("EVALUATION CONFIGURATION")
         self.logger.info("=" * 60)
-        for k, v in config.items():
-            self.logger.info(f"{k}: {v}")
+        for section, values in config.items():
+            self.logger.info(f"{section.capitalize()}:")
+            if isinstance(values, dict):
+                for k, v in values.items():
+                    self.logger.info(f"  {k}: {v}")
+            else:
+                self.logger.info(f"  {values}")
+            self.logger.info("")
         self.logger.info("=" * 60)
 
     def log_epoch_start(self, epoch: int, total_epochs: int):
