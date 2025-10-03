@@ -41,16 +41,24 @@ class TrainingConfig:
     learning_rate: float = 0.001
     seed: int = 42
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
+    save_interval: int = 5  # Save a checkpoint every N epochs
 
 
 @dataclass
 class PathsConfig:
+    base_path: str = "outputs"
     model_path: str = "outputs/models/best_model.pth"
     results_dir: str = "outputs/results"
     history_file: str = "training_history.json"
     logging_dir: Optional[str] = "outputs/logs"
 
 
+@dataclass(frozen=True)
+class TaskConfig:
+    CLASSIFICATION: str = "classification"
+    SEGMENTATION: str = "segmentation"
+    PLOT: str = "plot"
+    
 @dataclass
 class Config:
     data: DataConfig = field(default_factory=DataConfig)
@@ -58,3 +66,4 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
+    Task: TaskConfig = field(default_factory=TaskConfig)
