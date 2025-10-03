@@ -13,9 +13,8 @@ from deepfake.visualization.plots import plot_segmentation_curves
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
-from deepfake.utils.model_manager import save_training_history
+from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.config import Config
-
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Measure overlap between predicted and ground-truth masks (Dice score)."""
@@ -67,6 +66,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         )
 
     train_loader = prepare_dataloader(train_ds, cfg, shuffle=cfg.loader.shuffle_train)
+    # TODO: FIX THIS AND CREATE A NEW AND DO NOT THROW EXCEPTION. PREPARE DATALOADER SHOULD INSTEAD ALWAYS CREATE LEGIT DATA
     if train_loader is None:
         raise RuntimeError("No tampered samples with masks found for training")
 
@@ -75,10 +75,14 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    
+    metric_tracker = TrainingMetricsTracker()
+    metric_tracker.get_best_metric
 
     best_val_dice = None
-    history = {"train_loss": [], "val_loss": [], "train_dice": [], "val_dice": []}
+    #history = {"train_loss": [], "val_loss": [], "train_dice": [], "val_dice": []}
 
+    metric_tracker.start_training()
     for epoch in range(cfg.training.epochs):
         model.train()
         train_loss = 0.0
@@ -104,8 +108,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         avg_train_loss = train_loss / max(steps, 1)
         avg_train_dice = train_dice / max(steps, 1)
 
-        history["train_loss"].append(avg_train_loss)
-        history["train_dice"].append(avg_train_dice)
+        #history["train_loss"].append(avg_train_loss)
+        #history["train_dice"].append(avg_train_dice)
 
         logger.info(
             f"Epoch {epoch+1}: train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}"
@@ -134,9 +138,23 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             avg_val_loss = float("nan")
             avg_val_dice = float("nan")
 
-        history["val_loss"].append(avg_val_loss)
-        history["val_dice"].append(avg_val_dice)
+        #history["val_loss"].append(avg_val_loss)
+        #history["val_dice"].append(avg_val_dice)
 
+        metric_tracker.add_metrics(TrainingMetrics(
+            epoch=epoch,
+            step=steps,  # or global_step
+            train_loss=avg_train_loss,
+            val_loss=avg_val_loss,
+            additional_metrics={
+                "train_dice": avg_train_dice,
+                "val_dice": avg_val_dice,
+                #"train_iou": avg_train_iou,
+                #"val_iou": avg_val_iou,
+            }
+        ))
+
+ 
         logger.info(
             f"Epoch {epoch+1}: val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
         )
@@ -150,12 +168,10 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             torch.save(model.state_dict(), cfg.paths.model_path)
             logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
 
-    save_training_history(
-        cfg.paths.results_dir,
-        history,
-        history_file=cfg.paths.history_file,
-    )
-    plot_segmentation_curves(history, output_dir=cfg.paths.results_dir)
+    metric_tracker.end_training()
+    metric_tracker.save_to_json(cfg.paths.results_dir)
+
+    plot_segmentation_curves(metric_tracker.get_summary_stats(), output_dir=cfg.paths.results_dir)
     return {
         "best_dice": best_val_dice if best_val_dice is not None else float("nan"),
         "epochs": cfg.training.epochs,
