@@ -15,6 +15,7 @@ from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_manager import save_training_history
 from deepfake.config import Config
+from deepfake.utils.model_persister import TorchModelPersister
 
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
@@ -144,10 +145,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         metric_to_compare = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
         if best_val_dice is None or metric_to_compare > best_val_dice:
             best_val_dice = metric_to_compare
-            model_dir = os.path.dirname(cfg.paths.model_path)
-            if model_dir:
-                os.makedirs(model_dir, exist_ok=True)
-            torch.save(model.state_dict(), cfg.paths.model_path)
+            model_persister = TorchModelPersister()
+            model_persister.save_model(model, cfg.paths.model_path)
             logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
 
     save_training_history(

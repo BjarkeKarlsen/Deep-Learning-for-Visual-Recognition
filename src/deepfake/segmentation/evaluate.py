@@ -12,6 +12,7 @@ from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.config import Config
 
 
@@ -76,7 +77,8 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         raise RuntimeError("No tampered samples with masks available for evaluation")
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
-    model.load_state_dict(torch.load(cfg.paths.model_path, map_location=device))
+    model_persister = TorchModelPersister()
+    model_persister.load_model(model, cfg.paths.model_path)
     model.eval()
 
     dice_scores = []
