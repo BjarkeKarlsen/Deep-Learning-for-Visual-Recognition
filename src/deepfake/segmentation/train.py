@@ -13,7 +13,7 @@ from deepfake.visualization.plots import plot_segmentation_curves
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
-from deepfake.utils.model_manager import save_training_history
+from deepfake.utils.model_manager import save_training_history, _write_latest_run_pointer
 from deepfake.config import Config
 from deepfake.utils.model_persister import TorchModelPersister
 
@@ -149,13 +149,29 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             model_persister.save_model(model, cfg.paths.model_path)
             logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
 
+        # Periodic checkpoints
+        save_every = getattr(cfg.training, "save_interval", None)
+        if save_every and (epoch + 1) % save_every == 0:
+            model_dir = os.path.dirname(cfg.paths.model_path)
+            ckpt_dir = os.path.join(model_dir, "checkpoints")
+            os.makedirs(ckpt_dir, exist_ok=True)
+            ckpt_path = os.path.join(ckpt_dir, f"epoch_{epoch+1:03d}.pth")
+            TorchModelPersister().save_model(model, ckpt_path, optimizer=optimizer, epoch=epoch + 1)
+            logger.info(f"Saved checkpoint at {ckpt_path}")
+
     save_training_history(
         cfg.paths.results_dir,
         history,
         history_file=cfg.paths.history_file,
     )
     plot_segmentation_curves(history, output_dir=cfg.paths.results_dir)
+    # Record this run as the latest for convenience in evaluation.
+    try:
+        _write_latest_run_pointer(cfg.paths.model_path, cfg.paths.run_name)
+    except Exception:
+        pass
     return {
         "best_dice": best_val_dice if best_val_dice is not None else float("nan"),
         "epochs": cfg.training.epochs,
     }
+    # Note: keep any additional side-effects above the return.

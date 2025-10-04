@@ -14,7 +14,7 @@ from deepfake.visualization.plots import (
     plot_classification_metrics,
     plot_confusion_matrix,
 )
-from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.model_manager import check_model_exists, save_training_history, use_latest_run_if_available
 from deepfake.utils.logger import SidLogger
 
 from .dataset import SIDClassificationDataset
@@ -31,6 +31,8 @@ def evaluate(logger: SidLogger, cfg: Config):
     logger.info("EVALUATION MODE")
     logger.info("=" * 60)
 
+    # Try to resolve the correct checkpoint automatically if not explicitly set.
+    use_latest_run_if_available(logger, cfg)
     check_model_exists(cfg.paths.model_path)
 
     with SIDDatasetManager(
@@ -79,15 +81,19 @@ def evaluate(logger: SidLogger, cfg: Config):
     accuracy = 100 * np.mean(np.array(all_preds) == np.array(all_labels))
     logger.info(f"Overall Accuracy: {accuracy:.2f}%")
 
+    # Ensure a fixed class set even when the eval subset contains fewer labels.
+    all_class_indices = list(range(cfg.model.num_classes))
     report_dict = classification_report(
         all_labels,
         all_preds,
+        labels=all_class_indices,
         target_names=list(cfg.model.class_names),
         output_dict=True,
+        zero_division=0,
     )
     logger.log_classification_report(report_dict)
 
-    cm = confusion_matrix(all_labels, all_preds)
+    cm = confusion_matrix(all_labels, all_preds, labels=all_class_indices)
     logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
 
     results = {
@@ -95,8 +101,7 @@ def evaluate(logger: SidLogger, cfg: Config):
         "classification_report": report_dict,
         "confusion_matrix": cm.tolist(),
     }
-    logger.save_json(results, "evaluation_results.json")
-
+    # Consolidate metrics under results_dir
     save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
 
     logger.info("Generating visualizations...")

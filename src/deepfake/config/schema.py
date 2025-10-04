@@ -51,6 +51,11 @@ class PathsConfig:
     results_dir: str = "outputs/results"
     history_file: str = "training_history.json"
     logging_dir: Optional[str] = "outputs/logs"
+    # Optional subdirectory name to isolate each run's artifacts.
+    # When provided (or auto-generated), all outputs are nested under this run
+    # name, e.g. results_dir/<run_name>/..., logging_dir/<run_name>/..., and
+    # model_path gets a parent directory <run_name>/.
+    run_name: Optional[str] = None
 
 
 @dataclass(frozen=True)

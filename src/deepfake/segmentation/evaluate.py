@@ -11,7 +11,7 @@ from deepfake.data.dataset_manager import SIDDatasetManager
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
-from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.model_manager import check_model_exists, save_training_history, use_latest_run_if_available
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.config import Config
 
@@ -57,6 +57,8 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     device = torch.device(cfg.training.device)
     logger.log_evaluation_config(asdict(cfg))
 
+    # Try to resolve the correct checkpoint automatically if not explicitly set.
+    use_latest_run_if_available(logger, cfg)
     check_model_exists(cfg.paths.model_path)
 
     with SIDDatasetManager(
@@ -99,7 +101,7 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     logger.info(f"Mean Dice: {mean_dice:.4f}, Mean IoU: {mean_iou:.4f}")
 
     results = {"dice": mean_dice, "iou": mean_iou}
+    # Consolidate metrics under results_dir
     save_training_history(cfg.paths.results_dir, results, history_file="segmentation_eval.json")
-    logger.save_json(results, "segmentation_evaluation.json")
 
     return results
