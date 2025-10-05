@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -36,12 +36,19 @@ class ModelConfig:
 
 
 @dataclass
+class OptimizerConfig:
+    name: str = "adam"
+    params: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
     seed: int = 42
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     save_interval: int = 5  # Save a checkpoint every N epochs
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
 
 
 @dataclass

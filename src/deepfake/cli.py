@@ -64,14 +64,11 @@ def main() -> None:
         if args.eval:
             segment_evaluate(SidLogger("segmentation-eval", log_dir=log_dir), cfg)
     elif args.plot:
+        # Placeholder only; plotting helpers are intentionally disabled here.
         if args.plot == cfg.Task.CLASSIFICATION:
-            print("Plotting classification metrics...")
-            # Placeholder for actual plotting function
-            # plot_classification_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+            print("Plotting classification metrics (placeholder)…")
         elif args.plot == cfg.Task.SEGMENTATION:
-            print("Plotting segmentation metrics...")
-            # Placeholder for actual plotting function
-            # plot_segmentation_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+            print("Plotting segmentation metrics (placeholder)…")
     else:
         print(f"Unknown task: {args.task}")
         parser.print_help()

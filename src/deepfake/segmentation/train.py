@@ -16,6 +16,7 @@ from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_manager import save_training_history, _write_latest_run_pointer
 from deepfake.config import Config
 from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.utils.optimizer_factory import create_optimizer, optimizer_requires_closure
 
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
@@ -75,7 +76,12 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    optimizer = create_optimizer(
+        model.parameters(),
+        cfg.training.optimizer,
+        default_lr=cfg.training.learning_rate,
+    )
+    use_closure = optimizer_requires_closure(optimizer)
 
     best_val_dice = None
     history = {"train_loss": [], "val_loss": [], "train_dice": [], "val_dice": []}
@@ -91,16 +97,32 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             images = images.to(device)
             masks = masks.to(device)
 
-            optimizer.zero_grad()
-            logits = model(images)
-            loss = criterion(logits, masks)
-            loss.backward()
-            optimizer.step()
+            if use_closure:
+                # Closure path for optimizers like LBFGS; compute metrics without grads
+                with torch.no_grad():
+                    logits = model(images)
+                    loss_value = criterion(logits, masks).item()
 
-            train_loss += loss.item()
+                def _closure():
+                    optimizer.zero_grad()
+                    out = model(images)
+                    l = criterion(out, masks)
+                    l.backward()
+                    return l
+
+                optimizer.step(_closure)
+            else:
+                optimizer.zero_grad()
+                logits = model(images)
+                _loss = criterion(logits, masks)
+                loss_value = _loss.item()
+                _loss.backward()
+                optimizer.step()
+
+            train_loss += loss_value
             train_dice += dice_coefficient(logits.detach(), masks).item()
             steps += 1
-            pbar.set_postfix({"loss": f"{loss.item():.3f}"})
+            pbar.set_postfix({"loss": f"{loss_value:.3f}"})
 
         avg_train_loss = train_loss / max(steps, 1)
         avg_train_dice = train_dice / max(steps, 1)

@@ -29,6 +29,9 @@ training:
   epochs: 1
   learning_rate: 0.0005
   seed: 42
+  optimizer:
+    name: adam
+    params: {}
 
 paths:
   model_path: outputs/models/dev/segmentation_best_model.pth
