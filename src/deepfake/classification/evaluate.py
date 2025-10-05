@@ -98,6 +98,7 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     results = {
         "accuracy": accuracy,
+        "class_names": list(cfg.model.class_names),
         "classification_report": report_dict,
         "confusion_matrix": cm.tolist(),
     }

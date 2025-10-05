@@ -4,11 +4,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
 from deepfake.visualization.plots import plot_training_curves
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.model_manager import save_training_history, _write_latest_run_pointer
+from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
+from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.utils.optimizer_factory import create_optimizer, optimizer_requires_closure
 
@@ -58,6 +62,8 @@ def train(logger: SidLogger, cfg: Config):
         num_workers=cfg.loader.num_workers,
     )
 
+    metrics_tracker = TrainingMetricsTracker()
+
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = create_optimizer(
@@ -69,8 +75,11 @@ def train(logger: SidLogger, cfg: Config):
 
     best_val_acc = None
     best_epoch = None
-    history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
-
+    #history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
+    all_preds = []
+    all_labels = []
+    metrics_tracker.start_training()
+    
     for epoch in range(cfg.training.epochs):
         model.train()
         train_loss = 0
@@ -126,19 +135,36 @@ def train(logger: SidLogger, cfg: Config):
                 val_total += labels.size(0)
                 val_correct += (predicted == labels).sum().item()
 
-        train_acc = 100 * train_correct / train_total if train_total else float('nan')
-        val_acc = 100 * val_correct / val_total if val_total else float('nan')
+        train_acc = train_correct / train_total if train_total else float('nan')
+        val_acc = val_correct / val_total if val_total else float('nan')
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = (
             val_loss / len(val_loader)
             if len(val_loader) > 0
             else float('nan')
         )
+        
+        prec = precision_score(all_labels, all_preds, average="macro", zero_division=0)
+        rec  = recall_score   (all_labels, all_preds, average="macro", zero_division=0)
+        f1   = f1_score       (all_labels, all_preds, average="macro", zero_division=0)
+        cm   = confusion_matrix(all_labels, all_preds)
+        cm_sum = cm.sum()
 
-        history['train_loss'].append(avg_train_loss)
-        history['train_acc'].append(train_acc)
-        history['val_loss'].append(avg_val_loss)
-        history['val_acc'].append(val_acc)
+        metrics_tracker.add_metrics(TrainingMetrics(
+            epoch=epoch,
+            step=(epoch + 1) * len(train_loader),
+            train_loss=avg_train_loss,
+            val_loss=avg_val_loss,
+            train_acc=train_acc,
+            val_acc=val_acc,
+            learning_rate=optimizer.param_groups[0]['lr'],
+            additional_metrics={
+                "precision": prec,
+                "recall": rec,
+                "f1_score": f1,
+                "cm_total": cm_sum
+            }
+        ))
 
         logger.log_epoch_results(
             epoch,
@@ -166,19 +192,20 @@ def train(logger: SidLogger, cfg: Config):
             TorchModelPersister().save_model(model, ckpt_path, optimizer=optimizer, epoch=epoch + 1)
             logger.info(f"Saved checkpoint at {ckpt_path}")
 
+    metrics_tracker.end_training()
     logger.log_training_complete(
-        total_time=None,
+        total_time=metrics_tracker.get_summary_stats().get('duration_minutes'),
         best_metric=best_val_acc,
         best_epoch=best_epoch,
     )
+    
+    
+    path_to_save = os.path.join(cfg.paths.results_dir, cfg.paths.history_file)
+    metrics_tracker.save_to_json(path_to_save)
+    
+    plotter = ClassificationPlots(cfg.paths.results_dir, path_to_save)
 
-    save_training_history(
-        cfg.paths.results_dir,
-        history,
-        history_file=cfg.paths.history_file,
-    )
-
-    plot_training_curves(history, output_dir=cfg.paths.results_dir)
+    plot_training_curves(metrics_tracker.get_training_curves_data(), output_dir=cfg.paths.results_dir)
 
     # Record this run as the latest for convenience in evaluation.
     try:
