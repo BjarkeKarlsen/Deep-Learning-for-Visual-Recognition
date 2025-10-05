@@ -200,7 +200,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             logger.info(f"Saved checkpoint at {ckpt_path}")
 
     metric_tracker.end_training()
-    metric_tracker.save_to_json(cfg.paths.results_dir)
+    path_to_save = os.path.join(cfg.paths.results_dir, cfg.paths.history_file)
+    metric_tracker.save_to_json(path_to_save)
     plot_segmentation_curves(metric_tracker.get_summary_stats(), output_dir=cfg.paths.results_dir)
     # Record this run as the latest for convenience in evaluation.
     try:

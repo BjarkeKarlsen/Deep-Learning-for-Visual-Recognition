@@ -202,8 +202,8 @@ def train(logger: SidLogger, cfg: Config):
     path_to_save = os.path.join(cfg.paths.results_dir, cfg.paths.history_file)
     metrics_tracker.save_to_json(path_to_save)
     
-    plotter = ClassificationPlots(cfg.paths.results_dir, path_to_save)
-
+    plotter = ClassificationPlots(history_path=path_to_save, save_path=cfg.paths.results_dir)
+    plotter.plot_training_history()
     plot_training_curves(metrics_tracker.get_training_curves_data(), output_dir=cfg.paths.results_dir)
 
     # Record this run as the latest for convenience in evaluation.
