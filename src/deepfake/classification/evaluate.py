@@ -102,6 +102,8 @@ def evaluate(logger: SidLogger, cfg: Config):
         "classification_report": report_dict,
         "confusion_matrix": cm.tolist(),
     }
+    # Persist results in a fixed report path (legacy behavior) and under run results
+    logger.save_json(results, "outputs/results/classification/evaluation.json")
     # Consolidate metrics under results_dir
     save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
 
