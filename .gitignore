@@ -84,3 +84,6 @@ docs/_build/
 
 # New project artefact roots
 outputs/
+
+# Local run logs
+logs/
