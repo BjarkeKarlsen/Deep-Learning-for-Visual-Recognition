@@ -92,10 +92,11 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     results = {
         "accuracy": accuracy,
+        "class_names": list(cfg.model.class_names),
         "classification_report": report_dict,
         "confusion_matrix": cm.tolist(),
     }
-    logger.save_json(results, "evaluation_results.json")
+    logger.save_json(results, "outputs/results/classification/evaluation.json")
 
     save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
 

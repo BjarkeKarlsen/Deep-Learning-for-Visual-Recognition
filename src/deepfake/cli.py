@@ -11,6 +11,7 @@ from deepfake.segmentation import train as segment_train
 from deepfake.utils.seed_manager import SeedManager
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.config_loader import ConfigLoader
+from deepfake.visualization.classification_plots import ClassificationPlots
 
 
 def main() -> None:
@@ -58,9 +59,15 @@ def main() -> None:
             segment_evaluate(SidLogger("segmentation-eval", log_dir=log_dir), cfg)
     elif args.plot:
         if args.plot == cfg.Task.CLASSIFICATION:
-            print("Plotting classification metrics...")
-            # Placeholder for actual plotting function
-            # plot_classification_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+            class_plots = ClassificationPlots(history_path="outputs/results/dev/classification/training_history.json", save_path=cfg.paths.results_dir, eval_report_path="outputs/results/classification/evaluation.json")
+            
+            if args.eval:
+                class_plots.plot_confusion_matrix()
+                class_plots.plot_classification_report()
+                
+            elif args.train:
+                class_plots.plot_training_history()
+                class_plots.plot_learning_rate_schedule()
         elif args.plot == cfg.Task.SEGMENTATION:
             print("Plotting segmentation metrics...")
             # Placeholder for actual plotting function
