@@ -1,3 +1,4 @@
+from deepfake.utils.model_persister import TorchModelPersister
 import torch
 import numpy as np
 import pandas as pd
@@ -57,9 +58,10 @@ def evaluate(logger: SidLogger, cfg: Config):
     )
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
-    model.load_state_dict(torch.load(cfg.paths.model_path, map_location=device))
+    model_persister = TorchModelPersister()
+    model_persister.load_model(model, cfg.paths.model_path)
     model.eval()
-
+    
     all_preds = []
     all_labels = []
 

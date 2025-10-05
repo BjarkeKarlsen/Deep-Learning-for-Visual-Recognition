@@ -13,6 +13,10 @@ from deepfake.visualization.plots import plot_training_curves
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.classification_plots import ClassificationPlots
+from deepfake.utils.model_manager import save_training_history
+from deepfake.utils.model_persister import TorchModelPersister
+
+
 from .dataset import SIDClassificationDataset
 from .model import BaselineClassifier
 
@@ -153,10 +157,8 @@ def train(logger: SidLogger, cfg: Config):
             if best_val_acc is None or val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_epoch = epoch
-                model_dir = os.path.dirname(cfg.paths.model_path)
-                if model_dir:
-                    os.makedirs(model_dir, exist_ok=True)
-                torch.save(model.state_dict(), cfg.paths.model_path)
+                model_persister = TorchModelPersister()
+                model_persister.save_model(model, cfg.paths.model_path)
                 logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
     metrics_tracker.end_training()
