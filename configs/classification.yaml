@@ -32,6 +32,10 @@ training:
   epochs: 5
   learning_rate: 0.0005
   seed: 42
+  optimizer:
+    name: adamw
+    params:
+      weight_decay: 0.01
 
 paths:
   model_path: outputs/models/classification/best_model.pth

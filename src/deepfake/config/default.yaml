@@ -33,6 +33,9 @@ training:
   epochs: 10
   learning_rate: 0.001
   seed: 42
+  optimizer:
+    name: adam
+    params: {}
 
 paths:
   model_path: outputs/models/best_model.pth

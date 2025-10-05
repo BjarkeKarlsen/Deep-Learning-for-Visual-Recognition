@@ -2,7 +2,6 @@ import os
 from dataclasses import asdict
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
@@ -15,6 +14,7 @@ from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMet
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.utils.model_manager import save_training_history, _write_latest_run_pointer
 from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.utils.optimizer_factory import create_optimizer, optimizer_requires_closure
 
 
 from .dataset import SIDClassificationDataset
@@ -66,7 +66,12 @@ def train(logger: SidLogger, cfg: Config):
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    optimizer = create_optimizer(
+        model.parameters(),
+        cfg.training.optimizer,
+        default_lr=cfg.training.learning_rate,
+    )
+    use_closure = optimizer_requires_closure(optimizer)
 
     best_val_acc = None
     best_epoch = None
@@ -86,17 +91,33 @@ def train(logger: SidLogger, cfg: Config):
             images = batch["image"].to(device)
             labels = batch["label"].to(device)
 
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            if use_closure:
+                # For optimizers like LBFGS that require a closure, compute metrics without grads
+                with torch.no_grad():
+                    outputs = model(images)
+                    loss_value = criterion(outputs, labels).item()
 
-            train_loss += loss.item()
+                def _closure():
+                    optimizer.zero_grad()
+                    out = model(images)
+                    l = criterion(out, labels)
+                    l.backward()
+                    return l
+
+                optimizer.step(_closure)
+            else:
+                optimizer.zero_grad()
+                outputs = model(images)
+                _loss = criterion(outputs, labels)
+                loss_value = _loss.item()
+                _loss.backward()
+                optimizer.step()
+
+            train_loss += loss_value
             _, predicted = torch.max(outputs, 1)
             train_total += labels.size(0)
             train_correct += (predicted == labels).sum().item()
-            pbar.set_postfix({'loss': f'{loss.item():.3f}'})
+            pbar.set_postfix({'loss': f'{loss_value:.3f}'})
 
         model.eval()
         val_loss = 0
