@@ -80,7 +80,9 @@ def main() -> None:
                 class_plots.plot_training_history()
                 class_plots.plot_learning_rate_schedule()
         elif args.plot == cfg.Task.SEGMENTATION:
-            print("Plotting segmentation metrics (placeholder)…")
+            print("Plotting segmentation metrics...")
+            # Placeholder for actual plotting function
+            # plot_segmentation_metrics(cfg.paths.history_file, cfg.paths.results_dir)
     else:
         print(f"Unknown task: {args.task}")
         parser.print_help()
