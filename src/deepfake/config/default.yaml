@@ -2,17 +2,17 @@ data:
   dataset_name: saberzl/SID_Set
   image_size: 224
   train_samples: 10
-  val_samples: 10
-  test_samples: 10
+  val_samples: 2
+  test_samples: 2
   use_streaming: true
-  use_disk_cache: true
+  use_disk_cache: false
 
 loader:
   batch_size: 4
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
-  num_workers: 4
+  num_workers: 0
 
 model:
   class_names:
@@ -39,3 +39,4 @@ paths:
   results_dir: outputs/results
   history_file: training_history.json
   logging_dir: outputs/logs
+  run_name: null

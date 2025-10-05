@@ -53,6 +53,7 @@ class TrainingConfig:
     learning_rate: float = 0.001
     seed: int = 42
     device: str = "cpu"  # updated at runtime depending on CUDA availability
+    save_interval: int = 5  # save checkpoint every N epochs
 
 
 @dataclass
@@ -61,6 +62,7 @@ class PathsConfig:
     results_dir: str = "outputs/results"
     history_file: str = "training_history.json"
     logging_dir: Optional[str] = "outputs/logs"
+    run_name: Optional[str] = None  # per-run subdirectory name
 
 
 @dataclass
@@ -122,6 +124,7 @@ paths:
   results_dir: outputs/results
   history_file: training_history.json
   logging_dir: outputs/logs
+  run_name: null
 ```
 
 These defaults remain untouched at runtime and serve as documentation plus a
@@ -160,17 +163,15 @@ cfg = loader.get_config()
 
 Key behaviours:
 
-- `OmegaConf.structured(Config)` initialises the schema with type safety.
-- `default.yaml` is merged next.
-- When `config_path` is provided, it is merged on top (the CLI requires this via
-  `--config`).
-- `cfg.training.device` is set to `"cuda"` when a GPU is available, otherwise
-  `"cpu"`.
-- `cfg.paths.model_path`, `cfg.paths.results_dir`, and (if set)
-  `cfg.paths.logging_dir` are converted to absolute paths anchored to the repo
-  root.
-- The loader creates results and logging directories eagerly to avoid race
-  conditions later in the pipeline.
+- Schema → defaults → user override (via `--config`) are merged in that order.
+- Device is auto‑detected (`cuda` if available, else `cpu`) unless specified.
+- Output paths are normalised to absolute repo‑rooted paths.
+- Per‑run isolation: `paths.run_name` nests all outputs under a run folder; if
+  omitted a short timestamp (`yymmdd_HHMMSS`) is generated. During evaluation,
+  the loader automatically reuses the latest training run when no name is
+  supplied. You can override via the `RUN_NAME` environment variable.
+- Output folders are created eagerly and a copy of the final config is saved to
+  `<results_dir>/run_config.yaml`.
 
 ### CLI helper
 
@@ -183,7 +184,6 @@ python -m deepfake.utils.config_loader --dump-default --output configs/custom.ya
 # Add --force to overwrite an existing file
 ```
 
-Together these pieces provide a predictable configuration story: dataclasses
-establish the schema, `default.yaml` defines canonical defaults, override files
-are explicit per-run knobs, and `ConfigLoader` ties everything together at
-runtime.
+In short: dataclasses define the schema, `default.yaml` documents baselines,
+overrides let you tweak per run, and the loader produces a ready‑to‑use config
+with stable paths and a per‑run output folder.

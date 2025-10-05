@@ -39,7 +39,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    loader = ConfigLoader(config_path=args.config)
+    if args.train and not args.eval:
+        run_mode = "train"
+    elif args.eval and not args.train:
+        run_mode = "eval"
+    else:
+        run_mode = None
+
+    loader = ConfigLoader(config_path=args.config, run_mode=run_mode)
     cfg = loader.get_config()
 
     seed_value = getattr(cfg.training, "seed", None) or 42
