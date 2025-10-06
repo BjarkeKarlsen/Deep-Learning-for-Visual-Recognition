@@ -28,14 +28,6 @@ class SIDDatasetManager:
         self.use_disk_cache = use_disk_cache
         self.use_streaming = use_streaming
         self._streaming_requested = use_streaming
-        if self.use_streaming:
-            import warnings
-            warnings.warn(
-                "Streaming mode currently leads to unstable shutdown; it will be disabled until the upstream fix lands.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            self.use_streaming = False
         self._cached_splits: Dict[str, Dataset] = {}
 
     def _ensure_indexable_split(self, split: str) -> Dataset:
