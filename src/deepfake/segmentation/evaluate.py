@@ -3,6 +3,7 @@ from dataclasses import asdict
 import os
 from typing import Dict
 
+from deepfake.visualization.segmentation_plots import SegmentationPlots
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -53,7 +54,7 @@ def prepare_dataloader(dataset, cfg: Config) -> DataLoader:
         pin_memory=torch.cuda.is_available(),
     )
 
-
+@torch.no_grad()
 def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     """Evaluate a trained U-Net and persist Dice/IoU summaries."""
     device = torch.device(cfg.training.device)
@@ -85,6 +86,8 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     model_persister = TorchModelPersister()
     model_persister.load_model(model, cfg.paths.model_path)
     model.eval()
+    
+    gallery = []
 
     dice_scores = []
     iou_scores = []
@@ -97,11 +100,24 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             metrics = dice_and_iou(logits, masks)
             dice_scores.append(metrics["dice"].item())
             iou_scores.append(metrics["iou"].item())
+            max_examples = 6
+            if len(gallery) < max_examples:
+                # Get raw image (denormalize)
+                raw_img = images[0].cpu()
+                mean = torch.tensor(cfg.model.normalize_mean).view(3, 1, 1)
+                std = torch.tensor(cfg.model.normalize_std).view(3, 1, 1)
+                denorm_img = (raw_img * std + mean).clamp(0, 1).permute(1, 2, 0).numpy()
+                
+                # Get masks (squeeze channel dimension)
+                true_mask = masks[0].squeeze(0).cpu().numpy()  # Remove channel dim
+                pred_mask = (torch.sigmoid(logits[0]) > 0.5).squeeze(0).cpu().numpy().astype(float)
+                
+                gallery.append((denorm_img, true_mask, pred_mask))
 
     mean_dice = float(np.mean(dice_scores)) if dice_scores else float("nan")
     mean_iou = float(np.mean(iou_scores)) if iou_scores else float("nan")
 
-    # Instead of passing a dict, create a proper metrics object:
+     # Instead of passing a dict, create a proper metrics object:
     metrics_tracker.add_metrics(SegmentationEvaluationMetrics(
         task_type="segmentation",
         primary_metric="dice",
@@ -115,7 +131,13 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     results = {"dice_coefficient": mean_dice, "mean_iou": mean_iou}
     logger.save_json(results, "segmentation_evaluation.json")
     evaluation_metrics_path = os.path.join(cfg.paths.output_dir, "evaluation_metrics.json")
-
+    # plotter = SegmentationPlots()
+    # for idx, (im, true_m, pred_m) in enumerate(gallery, start=1):
+    #     save_path = cfg.paths.output_dir / f"segmentation_example_{idx}.png"
+    #     plotter.plot_segmentation(im, true_m, pred_m, save_path=str(save_path))
+    plotter = SegmentationPlots(output_directory=str(cfg.paths.output_dir), eval_history_path=str(evaluation_metrics_path))
+    gallery_path = cfg.paths.output_dir / "segmentation_gallery.png"
+    plotter.plot_segmentation_gallery(gallery, ncols=3, save_path=str(gallery_path))
     metrics_tracker.save_to_json(evaluation_metrics_path)
 
     return results

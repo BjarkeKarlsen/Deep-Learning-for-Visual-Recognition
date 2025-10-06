@@ -1,9 +1,26 @@
-from typing import Optional
+from typing import List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
+import cv2
 
 from deepfake.visualization.common_plots import CommonPlots
+
+def overlay_mask(image: np.ndarray, mask: np.ndarray,
+                 alpha: float = 0.5,
+                 color: Tuple[float,float,float] = (1,0,0)) -> np.ndarray:
+    """
+    Return the image with mask overlaid in the given RGB color.
+    image: H×W×3 float [0–1] or uint8 [0–255]
+    mask:  H×W binary or float probability
+    """
+    # Ensure uint8 [0..255]
+    img = (image*255).astype(np.uint8) if image.dtype != np.uint8 else image.copy()
+    # Build color overlay
+    overlay = np.zeros_like(img)
+    overlay[mask>0] = (np.array(color)*255).astype(np.uint8)
+    return cv2.addWeighted(img, 1.0, overlay, alpha, 0)
+
 
 
 class SegmentationPlots(CommonPlots):
@@ -19,40 +36,78 @@ class SegmentationPlots(CommonPlots):
         else:
             self.eval_report = None
 
-    def plot_segmentation(self, image, mask, save_path: Optional[str] = None) -> None:
+    def plot_segmentation(self, image: np.ndarray, true_mask: np.ndarray, pred_mask: np.ndarray, save_path: Optional[str] = None) -> None:
         """
-        Plot the input image, the segmentation mask, and an overlay of the mask on the image.
+        Plot the input image, the ground-truth mask, and a predicted-mask overlay.
 
         Args:
-            image (np.ndarray): The input image (H x W x C or H x W).
-            mask (np.ndarray): The segmentation mask (H x W), values 0/1 or probabilities.
-            save_path (str, optional): If provided, save the plot to this path.
+            image (H×W×C or H×W numpy): Input image.
+            true_mask (H×W numpy): Ground-truth segmentation (0/1).
+            pred_mask (H×W numpy): Predicted segmentation (0/1 or probabilities).
+            save_path: Optional path to save the figure.
         """
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-        # Show image
+        # Input image
         axes[0].imshow(image, cmap='gray' if image.ndim == 2 else None)
-        axes[0].set_title('Image')
-        axes[0].axis('off')
+        axes[0].set_title('Image'); axes[0].axis('off')
 
-        # Show mask
-        axes[1].imshow(mask, cmap='jet', alpha=1.0)
-        axes[1].set_title('Segmentation Mask')
-        axes[1].axis('off')
+        # Ground-truth mask
+        axes[1].imshow(true_mask, cmap='jet', vmin=0, vmax=1)
+        axes[1].set_title('True Mask'); axes[1].axis('off')
 
-        # Overlay mask on image
-        axes[2].imshow(image, cmap='gray' if image.ndim == 2 else None)
-        axes[2].imshow(mask, cmap='jet', alpha=0.5)
-        axes[2].set_title('Overlay')
-        axes[2].axis('off')
+        # Predicted overlay
+        #axes[2].imshow(image, cmap='gray' if image.ndim == 2 else None)
+        axes[2].imshow(pred_mask, cmap='jet', alpha=0.5, vmin=0, vmax=1)
+        axes[2].set_title('Predicted Overlay'); axes[2].axis('off')
 
         plt.tight_layout()
-        if save_path is not None:
+        if save_path:
             plt.savefig(save_path, dpi=100, bbox_inches='tight')
             print(f"Saved segmentation plot to {save_path}")
         else:
             plt.show()
         plt.close()
+        
+
+    def plot_segmentation_gallery(self,
+                          examples: List[Tuple[np.ndarray,np.ndarray,np.ndarray]],
+                          ncols: int = 3,
+                          save_path: Optional[str] = None) -> None:
+        """
+        Plot a grid of segmentation examples.
+        examples: list of (image, true_mask, pred_mask)
+        ncols: number of columns per row (each example uses 3 subplots)
+        """
+        n = len(examples)
+        nrows = int(np.ceil(n / ncols))
+        fig, axes = plt.subplots(nrows*2, ncols, figsize=(4*ncols, 4*nrows*2))
+        axes = axes.reshape(nrows*2, ncols)
+
+        for idx, (img, true_m, pred_m) in enumerate(examples):
+            row = (idx // ncols)*2
+            col = idx % ncols
+
+            # True overlay
+            ax = axes[row, col]
+            ax.imshow(overlay_mask(img, true_m, color=(0,1,0)))
+            ax.set_title("True Mask Overlay")
+            ax.axis("off")
+
+            # Pred overlay
+            ax = axes[row+1, col]
+            ax.imshow(overlay_mask(img, pred_m, color=(1,0,0)))
+            ax.set_title("Pred Mask Overlay")
+            ax.axis("off")
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=100, bbox_inches='tight')
+            print(f"Saved segmentation gallery to {save_path}")
+        else:
+            plt.show()
+        plt.close()
+
     def plot_training_history(self, save_path: Optional[str] = None) -> None:
         """Plot segmentation loss and Dice curves extracted from the history dictionary."""
         path = self._resolve_path(save_path, "segmentation_curves.png")
