@@ -101,7 +101,7 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     mean_dice = float(np.mean(dice_scores)) if dice_scores else float("nan")
     mean_iou = float(np.mean(iou_scores)) if iou_scores else float("nan")
 
-     # Instead of passing a dict, create a proper metrics object:
+    # Instead of passing a dict, create a proper metrics object:
     metrics_tracker.add_metrics(SegmentationEvaluationMetrics(
         task_type="segmentation",
         primary_metric="dice",
