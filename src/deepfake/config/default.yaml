@@ -35,7 +35,9 @@ training:
   seed: 42
 
 paths:
-  model_path: outputs/models/best_model.pth
-  results_dir: outputs/results
-  history_file: training_history.json
-  logging_dir: outputs/logs
+  base: outputs
+  env: dev
+  model_filename: best_model.pth
+  history_filename: history.json
+  eval_metrics_filename: evaluation_metrics.json
+  log_subdir: logs

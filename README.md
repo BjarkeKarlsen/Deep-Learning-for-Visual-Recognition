@@ -96,27 +96,49 @@ See `docs/Configuration.md` for field-by-field details.
 ## 3. Run Pipelines
 
 Use the installed console script (after `pip install -e .`):
+OBS!: Config has been replaces with a variable for the env we are running:
+```--env dev or --env test```
 
 ```bash
 # classification
-deepfake-cli --train --task classification --config configs/classification.yaml
-deepfake-cli --eval  --task classification --config configs/classification.yaml
+deepfake-cli --train --task classification --env dev
+deepfake-cli --eval  --task classification --env dev
 
 # segmentation
-deepfake-cli --train --task segmentation --config configs/segmentation.yaml
-deepfake-cli --eval  --task segmentation --config configs/segmentation.yaml
+deepfake-cli --train --task segmentation --env test
+deepfake-cli --eval  --task segmentation --env test
 ```
 
 Install the package once (`pip install -e .`) and use `deepfake-cli` for all tasks going forward.
 
----
 
-## 4. Outputs and Logging
+## 4. Plotting Results
 
-- **Checkpoints** – written to `cfg.paths.model_path` (defaults under `outputs/models/<task>/`).
-- **Metrics & plots** – emitted into `cfg.paths.results_dir` (defaults under `outputs/results/<task>/`).
-- **Logs & JSON dumps** – stored beneath `cfg.paths.logging_dir` (defaults under `outputs/logs/<task>/`).
+After training or evaluation, generate plots directly via the CLI:
 
+### 4.1 Evaluation Visualizations
+
+```bash
+# Segmentation evaluation (not yet implemented)
+deepfake-cli --eval --plot segmentation --env dev
+```
+
+```bash
+# Classification evaluation (confusion matrix & report)
+deepfake-cli --eval --plot classification --env dev
+```
+
+This reads `evaluation_metrics.json` under `outputs/results/dev/<task>/`, and saves:
+
+- `confusion_matrix.png`
+- `classification_report.png`
+
+
+## 5. Outputs and Logging
+
+- **Checkpoints**: `cfg.paths.model_path` (`outputs/models/dev/<task>/best_model.pth`).
+- **Metrics \& plots**: `cfg.paths.results_dir` (`outputs/results/dev/<task>/`).
+- **Logs**: `cfg.paths.log_dir` (`outputs/logs/dev/<task>/`).
 All three destinations are created automatically if they do not exist.
 
 ---

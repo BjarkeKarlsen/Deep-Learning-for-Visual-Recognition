@@ -28,7 +28,7 @@ class ConfigLoader:
         self.repo_root = repo_root
         self._default_cfg = None
         self.cfg = self.load_config()
-        self._ensure_output_dirs()
+        #self._ensure_output_dirs()
 
     def load_config(self) -> Config:
         base = OmegaConf.structured(Config)
@@ -58,7 +58,7 @@ class ConfigLoader:
                 cfg.training.device = "cpu"
 
         cfg_obj: Config = OmegaConf.to_object(cfg)
-        self._normalize_paths(cfg_obj)
+        #self._normalize_paths(cfg_obj)
         return cfg_obj
 
     def get_config(self) -> Config:
@@ -76,13 +76,13 @@ class ConfigLoader:
         OmegaConf.save(OmegaConf.create(self._default_cfg), destination)
         return destination
 
-    def _ensure_output_dirs(self) -> None:
-        """Create results/logging directories so subsequent saves do not fail."""
-        results_dir = Path(self.cfg.paths.results_dir)
-        results_dir.mkdir(parents=True, exist_ok=True)
+    # def _ensure_output_dirs(self) -> None:
+    #     """Create results/logging directories so subsequent saves do not fail."""
+    #     results_dir = Path(self.cfg.paths.output_dir)
+    #     results_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.cfg.paths.logging_dir:
-            Path(self.cfg.paths.logging_dir).mkdir(parents=True, exist_ok=True)
+    #     if self.cfg.paths.logging_dir:
+    #         Path(self.cfg.paths.logging_dir).mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _load_yaml(path: Path):
@@ -91,12 +91,12 @@ class ConfigLoader:
             raise FileNotFoundError(f"Expected configuration file at {path}")
         return OmegaConf.load(path)
 
-    def _normalize_paths(self, cfg: Config) -> None:
-        """Resolve relative paths in the config against the repository root."""
-        cfg.paths.model_path = self._resolve_repo_path(cfg.paths.model_path)
-        cfg.paths.results_dir = self._resolve_repo_path(cfg.paths.results_dir)
-        if cfg.paths.logging_dir:
-            cfg.paths.logging_dir = self._resolve_repo_path(cfg.paths.logging_dir)
+    # def _normalize_paths(self, cfg: Config) -> None:
+    #     """Resolve relative paths in the config against the repository root."""
+    #     cfg.paths.model_filename = self._resolve_repo_path(cfg.paths.model_filename)
+        #cfg.paths.output_dir = self._resolve_repo_path(cfg.paths.output_dir)
+        #if cfg.paths.log_dir:
+        #    cfg.paths.log_dir = self._resolve_repo_path(cfg.paths.log_dir)
 
     def _resolve_repo_path(self, path_str: str) -> str:
         """Return an absolute path for repo-relative or user-relative inputs."""

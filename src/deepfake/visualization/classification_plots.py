@@ -15,15 +15,15 @@ from .common_plots import CommonPlots
 
 class ClassificationPlots(CommonPlots):
     """Plotting utilities specifically for classification tasks."""
-    def __init__(self, history_path: str = None, eval_report_path: str = None, save_path: str = None):
-        super().__init__(save_path)
-        if history_path:
-            self.history = self.load_training_history(history_path)
+    def __init__(self, training_history_path: str = None, eval_history_path: str = None, output_directory: str = None):
+        super().__init__(output_directory)
+        if training_history_path:
+            self.history = self.load_training_history(training_history_path)
         else:
             self.history = None
             
-        if eval_report_path:
-            self.eval_report = self.load_evaluation_report(eval_report_path)
+        if eval_history_path:
+            self.eval_report = self.load_evaluation_report(eval_history_path)
         else:
             self.eval_report = None
 
@@ -98,29 +98,41 @@ class ClassificationPlots(CommonPlots):
             save_path: Optional[str] = None,
             normalize: bool = False
         ) -> None:
-            """
-            Plot confusion matrix loaded from self.eval_report['confusion_matrix'].
-            """
-            cm = np.array(self.eval_report["confusion_matrix"])
-            class_names = list(self.eval_report["class_names"])
-            path = self._resolve_path(save_path, "confusion_matrix.png")
+        """
+        Plot confusion matrix loaded from self.eval_report['confusion_matrix'].
+        """
+        # Get the list of history entries
+        history_list = self.eval_report.get("metrics_history", [])
 
-            fmt = ".2f" if normalize else "d"
-            if normalize:
-                cm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+        # Select the entry you want (e.g., first or last)
+        entry = history_list[0]  # or [-1]
 
-            plt.figure(figsize=(max(8, len(class_names)), max(6, len(class_names))))
-            sns.heatmap(cm, annot=True, fmt=fmt, cmap="Blues",
-                        xticklabels=class_names, yticklabels=class_names,
-                        cbar_kws={"label": "Proportion" if normalize else "Count"})
-            plt.title("Confusion Matrix")
-            plt.ylabel("True Label")
-            plt.xlabel("Predicted Label")
-            plt.tight_layout()
-            self.save_plot(path)
+        # Extract confusion matrix and class names
+        cm = np.array(entry.get("confusion_matrix", []))
+        class_names = entry.get("class_names", [])
+        path = self._resolve_path(save_path, "confusion_matrix.png")
+
+        fmt = ".2f" if normalize else "d"
+        if normalize:
+            cm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
+
+        plt.figure(figsize=(max(8, len(class_names)), max(6, len(class_names))))
+        sns.heatmap(cm, annot=True, fmt=fmt, cmap="Blues",
+                    xticklabels=class_names, yticklabels=class_names,
+                    cbar_kws={"label": "Proportion" if normalize else "Count"})
+        plt.title("Confusion Matrix")
+        plt.ylabel("True Label")
+        plt.xlabel("Predicted Label")
+        plt.tight_layout()
+        self.save_plot(path)
     
     def plot_classification_report(self, save_path=None):
-        report = self.eval_report
+        history_list = self.eval_report.get("metrics_history", [])
+
+        # Select the entry you want (e.g., first or last)
+        entry = history_list[0]  # or [-1]
+
+        report = entry.get("classification_report", {})
         class_names = [k for k in report if k not in ("accuracy","macro avg","weighted avg")]
         precision = [report[c]["precision"] for c in class_names]
         recall    = [report[c]["recall"]    for c in class_names]
@@ -140,8 +152,8 @@ class ClassificationPlots(CommonPlots):
 
     
     def plot_learning_rate_schedule(
-        self,
-        save_path: Optional[str] = None,
+    self,
+    save_path: Optional[str] = None,
     ) -> None:
         """Plot LR schedule from self.history only once loaded."""
         curves = self.history

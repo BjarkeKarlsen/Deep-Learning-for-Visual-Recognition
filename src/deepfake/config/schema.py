@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
+from pathlib import Path
 
 
 @dataclass
@@ -46,12 +47,49 @@ class TrainingConfig:
 
 @dataclass
 class PathsConfig:
-    base_path: str = "outputs"
-    model_path: str = "outputs/models/best_model.pth"
-    results_dir: str = "outputs/results"
-    history_file: str = "training_history.json"
-    logging_dir: Optional[str] = "outputs/logs"
+    base: Path = Path("outputs")
+    env: str = "dev"
+    task: str = "segmentation"
+    model_filename: str = "best_model.pth"
+    history_filename: str = "history.json"
+    eval_metrics_filename: str = "evaluation_metrics.json"
+    log_subdir: str = "logs"
 
+    def __post_init__(self):
+        self.base.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def model_dir(self) -> Path:
+        return self.base / "models" / self.task / self.env 
+
+    @property
+    def model_path(self) -> Path:
+        p = self.model_dir / self.model_filename
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def output_dir(self) -> Path:
+        p = self.base / "results" / self.task / self.env
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def history_path(self) -> Path:
+        return self.output_dir / self.history_filename
+
+    @property
+    def eval_metrics_path(self) -> Path:
+        """
+        Path to save/load evaluation metrics JSON.
+        """
+        return self.output_dir / self.eval_metrics_filename
+
+    @property
+    def log_dir(self) -> Path:
+        p = self.base / self.log_subdir / self.task / self.env
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
 @dataclass(frozen=True)
 class TaskConfig:

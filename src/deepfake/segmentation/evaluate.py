@@ -1,5 +1,6 @@
 import math
 from dataclasses import asdict
+import os
 from typing import Dict
 
 import numpy as np
@@ -10,8 +11,9 @@ from tqdm import tqdm
 from deepfake.data.dataset_manager import SIDDatasetManager
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
+from deepfake.utils.evaluation_metrics_tracker import SegmentationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.utils.logger import SidLogger
-from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.model_manager import check_model_exists
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.config import Config
 
@@ -76,6 +78,9 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     if test_loader is None:
         raise RuntimeError("No tampered samples with masks available for evaluation")
 
+    metrics_tracker = EvaluationMetricsTracker(SegmentationEvaluationMetrics, logger=logger)
+
+
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     model_persister = TorchModelPersister()
     model_persister.load_model(model, cfg.paths.model_path)
@@ -96,10 +101,21 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     mean_dice = float(np.mean(dice_scores)) if dice_scores else float("nan")
     mean_iou = float(np.mean(iou_scores)) if iou_scores else float("nan")
 
+     # Instead of passing a dict, create a proper metrics object:
+    metrics_tracker.add_metrics(SegmentationEvaluationMetrics(
+        task_type="segmentation",
+        primary_metric="dice",
+        primary_score=mean_dice,
+        dice_coefficient=mean_dice,
+        mean_iou=mean_iou
+    ))
+    
     logger.info(f"Mean Dice: {mean_dice:.4f}, Mean IoU: {mean_iou:.4f}")
 
-    results = {"dice": mean_dice, "iou": mean_iou}
-    save_training_history(cfg.paths.results_dir, results, history_file="segmentation_eval.json")
+    results = {"dice_coefficient": mean_dice, "mean_iou": mean_iou}
     logger.save_json(results, "segmentation_evaluation.json")
+    evaluation_metrics_path = os.path.join(cfg.paths.output_dir, "evaluation_metrics.json")
+
+    metrics_tracker.save_to_json(evaluation_metrics_path)
 
     return results

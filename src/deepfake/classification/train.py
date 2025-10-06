@@ -1,22 +1,17 @@
 import os
 from dataclasses import asdict
+from deepfake.utils.model_persister import TorchModelPersister
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.visualization.plots import plot_training_curves
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.classification_plots import ClassificationPlots
-from deepfake.utils.model_manager import save_training_history
-from deepfake.utils.model_persister import TorchModelPersister
-
-
 from .dataset import SIDClassificationDataset
 from .model import BaselineClassifier
 
@@ -70,9 +65,6 @@ def train(logger: SidLogger, cfg: Config):
 
     best_val_acc = None
     best_epoch = None
-    #history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
-    all_preds = []
-    all_labels = []
     metrics_tracker.start_training()
     
     for epoch in range(cfg.training.epochs):
@@ -123,12 +115,7 @@ def train(logger: SidLogger, cfg: Config):
             else float('nan')
         )
         
-        prec = precision_score(all_labels, all_preds, average="macro", zero_division=0)
-        rec  = recall_score   (all_labels, all_preds, average="macro", zero_division=0)
-        f1   = f1_score       (all_labels, all_preds, average="macro", zero_division=0)
-        cm   = confusion_matrix(all_labels, all_preds)
-        cm_sum = cm.sum()
-
+   
         metrics_tracker.add_metrics(TrainingMetrics(
             epoch=epoch,
             step=(epoch + 1) * len(train_loader),
@@ -137,12 +124,6 @@ def train(logger: SidLogger, cfg: Config):
             train_acc=train_acc,
             val_acc=val_acc,
             learning_rate=optimizer.param_groups[0]['lr'],
-            additional_metrics={
-                "precision": prec,
-                "recall": rec,
-                "f1_score": f1,
-                "cm_total": cm_sum
-            }
         ))
 
         logger.log_epoch_results(
@@ -161,6 +142,7 @@ def train(logger: SidLogger, cfg: Config):
                 model_persister.save_model(model, cfg.paths.model_path)
                 logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
 
+
     metrics_tracker.end_training()
     
     logger.log_training_complete(
@@ -169,12 +151,13 @@ def train(logger: SidLogger, cfg: Config):
         best_epoch=best_epoch,
     )
     
+    metrics_tracker.save_to_json(cfg.paths.history_path)
     
-    path_to_save = os.path.join(cfg.paths.results_dir, cfg.paths.history_file)
-    metrics_tracker.save_to_json(path_to_save)
+    summary = metrics_tracker.get_summary_stats()
+    logger.info(f"Training Summary: {summary}")
+
     
-    plotter = ClassificationPlots(cfg.paths.results_dir, path_to_save)
+    plotter = ClassificationPlots(output_directory=cfg.paths.output_dir, training_history_path=history_path_to_save)
 
-    plot_training_curves(metrics_tracker.get_training_curves_data(), output_dir=cfg.paths.results_dir)
-
-
+    plotter.plot_training_history()
+    plotter.plot_learning_rate_schedule()

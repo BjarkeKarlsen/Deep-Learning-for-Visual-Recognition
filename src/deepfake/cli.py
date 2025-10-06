@@ -2,6 +2,7 @@
 """Command-line entry point for the Deepfake detection pipelines."""
 
 import argparse
+from deepfake.visualization.segmentation_plots import SegmentationPlots
 import torch.multiprocessing as mp
 
 from deepfake.classification import evaluate as classify_evaluate
@@ -11,8 +12,7 @@ from deepfake.segmentation import train as segment_train
 from deepfake.utils.seed_manager import SeedManager
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.config_loader import ConfigLoader
-from deepfake.visualization.classification_plots import ClassificationPlots
-
+from deepfake.visualization.classification_plots import ClassificationPlots 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deepfake Detection Toolkit")
@@ -24,6 +24,13 @@ def main() -> None:
         choices=["classification", "segmentation"],
         help="Pipeline to execute",
     )
+    parser.add_argument(
+        '--env',
+        type=str,
+        choices=["dev", "test", ],
+        help='Environment to use for paths and logging',
+        default="dev"
+    )
     
     parser.add_argument(
         '--plot',
@@ -32,46 +39,73 @@ def main() -> None:
         help='Create plots from training history JSON file.'
     )
         
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to a YAML configuration override",
-    )
+    # parser.add_argument(
+    #     "--config",
+    #     type=str,
+    #     help="Path to a YAML configuration override",
+    # )
     args = parser.parse_args()
+    
+    if args.env is None:
+        print("Please specify an environment using --env [dev|test]")
+        parser.print_help()
+        return
+    
+    config_file = "configs/"
+    if args.task:
+        if args.env == "dev":
+            config_file += args.env + "-" + args.task
+        elif args.env == "test":
+            config_file += args.task 
+    else:
+        if args.plot:
+            if args.env == "dev":
+                config_file += args.env + "-" + args.plot
+            elif args.env == "test":
+                config_file += args.plot
+    config_file += ".yaml"
 
-    loader = ConfigLoader(config_path=args.config)
+    loader = ConfigLoader(config_path=config_file)
     cfg = loader.get_config()
 
     seed_value = getattr(cfg.training, "seed", None) or 42
     SeedManager(seed_value)
 
-    log_dir = cfg.paths.logging_dir or "outputs/logs"
-
     if args.task == cfg.Task.CLASSIFICATION:
         if args.train:
-            classify_train(SidLogger("classification-train", log_dir=log_dir), cfg)
+            classify_train(SidLogger("classification-train", log_dir=cfg.paths.log_dir), cfg)
         if args.eval:
-            classify_evaluate(SidLogger("classification-eval", log_dir=log_dir), cfg)
+            classify_evaluate(SidLogger("classification-eval", log_dir=cfg.paths.log_dir), cfg)
     elif args.task == cfg.Task.SEGMENTATION:
         if args.train:
-            segment_train(SidLogger("segmentation-train", log_dir=log_dir), cfg)
+            segment_train(SidLogger("segmentation-train", log_dir=cfg.paths.log_dir), cfg)
         if args.eval:
-            segment_evaluate(SidLogger("segmentation-eval", log_dir=log_dir), cfg)
+            segment_evaluate(SidLogger("segmentation-eval", log_dir=cfg.paths.log_dir), cfg)
     elif args.plot:
         if args.plot == cfg.Task.CLASSIFICATION:
-            class_plots = ClassificationPlots(history_path="outputs/results/dev/classification/training_history.json", save_path=cfg.paths.results_dir, eval_report_path="outputs/results/classification/evaluation.json")
             
             if args.eval:
+                class_plots = ClassificationPlots(output_directory=cfg.paths.output_dir, eval_history_path=cfg.paths.eval_metrics_path)
+                print("Plotting classification metrics eval...")
                 class_plots.plot_confusion_matrix()
                 class_plots.plot_classification_report()
                 
             elif args.train:
+                class_plots = ClassificationPlots(training_history_path=cfg.paths.history_path, output_directory=cfg.paths.output_dir)
+                print("Plotting classification metrics train...")
                 class_plots.plot_training_history()
                 class_plots.plot_learning_rate_schedule()
         elif args.plot == cfg.Task.SEGMENTATION:
-            print("Plotting segmentation metrics...")
-            # Placeholder for actual plotting function
-            # plot_segmentation_metrics(cfg.paths.history_file, cfg.paths.results_dir)
+            
+            if args.eval:
+                segmentation_plots = SegmentationPlots(eval_history_path=cfg.paths.eval_metrics_path, output_directory=cfg.paths.output_dir)
+                print("Plotting segmentation metrics eval...")
+                print("Not implemented yet.")
+
+            if args.train:
+                segmentation_plots = SegmentationPlots(training_history_path=cfg.paths.history_path, output_directory=cfg.paths.output_dir)
+                print("Plotting segmentation metrics train...")
+                segmentation_plots.plot_training_history()
     else:
         print(f"Unknown task: {args.task}")
         parser.print_help()
