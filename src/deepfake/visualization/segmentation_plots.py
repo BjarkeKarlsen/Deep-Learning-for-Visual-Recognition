@@ -19,11 +19,40 @@ class SegmentationPlots(CommonPlots):
         else:
             self.eval_report = None
 
-    def plot_segmentation(self, image, mask):
-        # Placeholder for segmentation plotting logic
-        pass
+    def plot_segmentation(self, image, mask, save_path: Optional[str] = None) -> None:
+        """
+        Plot the input image, the segmentation mask, and an overlay of the mask on the image.
 
+        Args:
+            image (np.ndarray): The input image (H x W x C or H x W).
+            mask (np.ndarray): The segmentation mask (H x W), values 0/1 or probabilities.
+            save_path (str, optional): If provided, save the plot to this path.
+        """
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
+        # Show image
+        axes[0].imshow(image, cmap='gray' if image.ndim == 2 else None)
+        axes[0].set_title('Image')
+        axes[0].axis('off')
+
+        # Show mask
+        axes[1].imshow(mask, cmap='jet', alpha=1.0)
+        axes[1].set_title('Segmentation Mask')
+        axes[1].axis('off')
+
+        # Overlay mask on image
+        axes[2].imshow(image, cmap='gray' if image.ndim == 2 else None)
+        axes[2].imshow(mask, cmap='jet', alpha=0.5)
+        axes[2].set_title('Overlay')
+        axes[2].axis('off')
+
+        plt.tight_layout()
+        if save_path is not None:
+            plt.savefig(save_path, dpi=100, bbox_inches='tight')
+            print(f"Saved segmentation plot to {save_path}")
+        else:
+            plt.show()
+        plt.close()
     def plot_training_history(self, save_path: Optional[str] = None) -> None:
         """Plot segmentation loss and Dice curves extracted from the history dictionary."""
         path = self._resolve_path(save_path, "segmentation_curves.png")
