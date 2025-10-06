@@ -157,7 +157,7 @@ def train(logger: SidLogger, cfg: Config):
     logger.info(f"Training Summary: {summary}")
 
     
-    plotter = ClassificationPlots(output_directory=cfg.paths.output_dir, training_history_path=history_path_to_save)
+    plotter = ClassificationPlots(output_directory=cfg.paths.output_dir, training_history_path=cfg.paths.history_path)
 
     plotter.plot_training_history()
     plotter.plot_learning_rate_schedule()
