@@ -94,56 +94,73 @@ See `docs/Configuration.md` for field-by-field details.
 ---
 
 ## 3. Run Pipelines
+nce you’ve installed the package (e.g. via `pip install -e .`), the `deepfake` entry point is available on your PATH. Below are the primary commands and options:
 
-Use the installed console script (after `pip install -e .`):
-OBS!: Config has been replaces with a variable for the env we are running:
-```--env dev or --env test```
-
-```bash
-# classification
-deepfake-cli --train --task classification --env dev
-deepfake-cli --eval  --task classification --env dev
-
-# segmentation
-deepfake-cli --train --task segmentation --env test
-deepfake-cli --eval  --task segmentation --env test
-```
-
-Install the package once (`pip install -e .`) and use `deepfake-cli` for all tasks going forward.
-
-
-## 4. Plotting Results
-
-After training or evaluation, generate plots directly via the CLI:
-
-### 4.1 Evaluation Visualizations
+Train a model
 
 ```bash
-# Segmentation evaluation (not yet implemented)
-deepfake-cli --eval --plot segmentation --env dev
+deepfake train --task <classification|segmentation> [--env <dev|test>]
 ```
+
+Example (classification in dev):
 
 ```bash
-# Classification evaluation (confusion matrix & report)
-deepfake-cli --eval --plot classification --env dev
+deepfake train --task classification --env dev
 ```
 
-This reads `evaluation_metrics.json` under `outputs/results/dev/<task>/`, and saves:
+Example (segmentation in test):
 
-- `confusion_matrix.png`
-- `classification_report.png`
+```bash
+deepfake train --task segmentation --env test
+```
 
+Evaluate a trained model
 
-## 5. Outputs and Logging
+```bash
+deepfake eval --task <classification|segmentation> --runid <RUN_ID> [--env <dev|test>]
+```
 
-- **Checkpoints**: `cfg.paths.model_path` (`outputs/models/dev/<task>/best_model.pth`).
-- **Metrics \& plots**: `cfg.paths.results_dir` (`outputs/results/dev/<task>/`).
-- **Logs**: `cfg.paths.log_dir` (`outputs/logs/dev/<task>/`).
-All three destinations are created automatically if they do not exist.
+Example (eval segmentation run):
+
+```bash
+deepfake eval --task segmentation --runid 20251010T130000Z --env test
+```
+
+If you omit `--runid`, it defaults to the current timestamp–based ID in your config.
+
+Plot metrics from history or evaluation
+
+```bash
+deepfake plot --task <classification|segmentation> --stage <train|eval> [--runid <RUN_ID>] [--env <dev|test>]
+```
+
+Plot training curves for classification (dev):
+
+```bash
+deepfake plot --task classification --stage train --env dev
+```
+
+Plot evaluation confusion matrix for classification (test):
+
+```bash
+deepfake plot --task classification --stage eval --runid 20251010T130000Z --env test
+```
+
+Plot training history for segmentation (dev):
+
+```bash
+deepfake plot --task segmentation --stage train --env dev
+```
+### 3.1 Options
+
+`--task` selects the pipeline.
+`--env` chooses which YAML config (`dev-classification.yaml` or `test-segmentation.yaml`) to load.
+`--runid` lets you point to a previous run’s folder under `outputs/runs/<run_id>`.
+`--stage` (plot only) picks training vs. evaluation metrics.
 
 ---
 
-## 5. Troubleshooting & Tips
+## 4. Troubleshooting & Tips
 
 - Set `training.seed` in your YAML to reproduce runs; the CLI applies it at startup.
 - For large streaming jobs, keep `data.use_disk_cache: true` to avoid re-materialising derived splits.
