@@ -120,6 +120,10 @@ class SegmentationPlots(CommonPlots):
         # ALWAYS grab full-length dice lists, filling missing with NaN
         raw_train_dice = curves.get('train_dice', [])
         raw_val_dice   = curves.get('val_dice', [])
+        
+        #The padding logic assumes both train_dice and val_dice should have the same length as n_epochs, 
+        # but this may not be correct if validation metrics are collected less frequently than training metrics. 
+        # Consider checking if this assumption holds for your training loop.
         train_dice = list(raw_train_dice) + [np.nan] * (n_epochs - len(raw_train_dice))
         val_dice   = list(raw_val_dice)   + [np.nan] * (n_epochs - len(raw_val_dice))
 
