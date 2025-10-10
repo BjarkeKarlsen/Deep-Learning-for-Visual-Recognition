@@ -28,7 +28,6 @@ class ConfigLoader:
         self.repo_root = repo_root
         self._default_cfg = None
         self.cfg = self.load_config()
-        #self._ensure_output_dirs()
 
     def load_config(self) -> Config:
         base = OmegaConf.structured(Config)
@@ -58,7 +57,6 @@ class ConfigLoader:
                 cfg.training.device = "cpu"
 
         cfg_obj: Config = OmegaConf.to_object(cfg)
-        #self._normalize_paths(cfg_obj)
         return cfg_obj
 
     def get_config(self) -> Config:
@@ -75,14 +73,6 @@ class ConfigLoader:
             )
         OmegaConf.save(OmegaConf.create(self._default_cfg), destination)
         return destination
-
-    # def _ensure_output_dirs(self) -> None:
-    #     """Create results/logging directories so subsequent saves do not fail."""
-    #     results_dir = Path(self.cfg.paths.output_dir)
-    #     results_dir.mkdir(parents=True, exist_ok=True)
-
-    #     if self.cfg.paths.logging_dir:
-    #         Path(self.cfg.paths.logging_dir).mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _load_yaml(path: Path):
