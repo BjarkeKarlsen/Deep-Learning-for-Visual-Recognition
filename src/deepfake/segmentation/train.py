@@ -137,6 +137,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             step=steps,  # or global_step
             train_loss=avg_train_loss,
             val_loss=avg_val_loss,
+            learning_rate=optimizer.param_groups[0]['lr'],
             additional_metrics={
                 "train_dice": avg_train_dice,
                 "val_dice": avg_val_dice,
@@ -168,7 +169,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     summary = metrics_tracker.get_summary_stats()
     logger.log_list_of_dicts(f"Training Summary", summary)
 
-    plotter = SegmentationPlots(output_directory=cfg.paths.output_dir, training_history_path=cfg.paths.history_path)
+    plotter = SegmentationPlots(output_directory=cfg.paths.run_root, training_history_path=cfg.paths.history_path)
 
     plotter.plot_training_history()
     plotter.plot_learning_rate_schedule()
