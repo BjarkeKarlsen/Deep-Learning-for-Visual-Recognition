@@ -1,14 +1,14 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 224
-  train_samples: 100
+  image_size: 512
+  train_samples: 10
   val_samples: 10
   test_samples: 10
   use_streaming: true
-  use_disk_cache: false
+  use_disk_cache: true
 
 loader:
-  batch_size: 34
+  batch_size: 32
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
@@ -26,12 +26,14 @@ model:
     - 0.225
 
 training:
-  epochs: 5
+  epochs: 10
   learning_rate: 0.0003
   seed: 42
 
 paths:
-  model_path: outputs/models/segmentation/segmentation_best_model.pth
-  results_dir: outputs/results/segmentation
-  history_file: segmentation_history.json
-  logging_dir: outputs/logs/segmentation
+  base: outputs
+  task: segmentation
+  model_filename: best_model.pth
+  history_filename: history.json
+  metrics_filename: evaluation_metrics.json
+  log_filename: logs

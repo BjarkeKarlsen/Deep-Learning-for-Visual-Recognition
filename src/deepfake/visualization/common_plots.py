@@ -4,16 +4,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 class CommonPlots:
     """Base class for all plotting functionality with common utilities."""
 
-    def __init__(self, save_path: str = None, load_training: str = None, load_evaluation: str = None):
-        self.save_path = save_path
+    def __init__(self, output_dir: str = None, load_training: str = None, load_evaluation: str = None):
+        self.output_path = output_dir
         self.load_training = load_training
         self.load_evaluation = load_evaluation
-        self.default_save_path = Path("save_paths/results")
+        self.default_save_path = Path("results")
+        
         
         # Set up default styling
         self._setup_plotting_style()
@@ -38,7 +39,7 @@ class CommonPlots:
             return Path(save_path)
 
          # Use instance save_path or fallback to default
-        base_dir = Path(self.save_path) if self.save_path else self.default_save_path
+        base_dir = Path(self.output_path) if self.output_path else self.default_save_path
         return base_dir / default_filename
     
     def _create_save_path(self, path: Path) -> Path:
@@ -163,3 +164,5 @@ class CommonPlots:
         plt.savefig(path, dpi=dpi, bbox_inches=bbox_inches, facecolor=facecolor)
         plt.close()
         print(f"Saved plot to {path}")
+        
+    

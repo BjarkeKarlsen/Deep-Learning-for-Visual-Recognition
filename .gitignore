@@ -83,4 +83,6 @@ docs/_build/
 .cache/
 
 # New project artefact roots
-outputs/
+*logs/
+
+*best_model.pth

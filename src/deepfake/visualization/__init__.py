@@ -1,15 +1,7 @@
-"""Visualization utilities for Deepfake detection experiments."""
-
-from .plots import (
-    plot_confusion_matrix,
-    plot_classification_metrics,
-    plot_training_curves,
-    plot_segmentation_curves,
-)
+from .classification_plots import ClassificationPlots
+from .segmentation_plots import SegmentationPlots
 
 __all__ = [
-    "plot_confusion_matrix",
-    "plot_classification_metrics",
-    "plot_training_curves",
-    "plot_segmentation_curves",
+    "ClassificationPlots",
+    "SegmentationPlots",
 ]

@@ -22,6 +22,7 @@ dependencies = [
     "omegaconf",
     "pandas",
     "hf_xet",
+    "opencv-python",
 ]
 
 [tool.setuptools]

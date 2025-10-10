@@ -108,6 +108,17 @@ class SidLogger(logging.Logger):
                 self.logger.info(f"  {values}")
             self.logger.info("")
         self.logger.info("=" * 60)
+        
+    def log_list_of_dicts(self, text: str, config: Dict[str, Any]):
+        self.logger.info(text)
+        for section, values in config.items():
+            self.logger.info(f"{section.capitalize()}:")
+            if isinstance(values, dict):
+                for k, v in values.items():
+                    self.logger.info(f"  {k}: {v}")
+            else:
+                self.logger.info(f"  {values}")
+            self.logger.info("")
 
     def log_epoch_start(self, epoch: int, total_epochs: int):
         self.logger.info(f"Starting epoch {epoch+1}/{total_epochs}")

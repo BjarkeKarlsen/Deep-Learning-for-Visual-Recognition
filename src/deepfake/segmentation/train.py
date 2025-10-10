@@ -9,13 +9,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.visualization.plots import plot_segmentation_curves
+from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
+from deepfake.visualization.segmentation_plots import SegmentationPlots
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.config import Config
-from deepfake.utils.model_persister import TorchModelPersister
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Measure overlap between predicted and ground-truth masks (Dice score)."""
@@ -77,13 +77,9 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
     
-    metric_tracker = TrainingMetricsTracker()
-    metric_tracker.get_best_metric
+    metrics_tracker = TrainingMetricsTracker()
 
-    best_val_dice = None
-    #history = {"train_loss": [], "val_loss": [], "train_dice": [], "val_dice": []}
-
-    metric_tracker.start_training()
+    metrics_tracker.start_training()
     for epoch in range(cfg.training.epochs):
         model.train()
         train_loss = 0.0
@@ -108,9 +104,6 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
         avg_train_loss = train_loss / max(steps, 1)
         avg_train_dice = train_dice / max(steps, 1)
-
-        #history["train_loss"].append(avg_train_loss)
-        #history["train_dice"].append(avg_train_dice)
 
         logger.info(
             f"Epoch {epoch+1}: train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}"
@@ -139,14 +132,12 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             avg_val_loss = float("nan")
             avg_val_dice = float("nan")
 
-        #history["val_loss"].append(avg_val_loss)
-        #history["val_dice"].append(avg_val_dice)
-
-        metric_tracker.add_metrics(TrainingMetrics(
+        metrics_tracker.add_metrics(TrainingMetrics(
             epoch=epoch,
             step=steps,  # or global_step
             train_loss=avg_train_loss,
             val_loss=avg_val_loss,
+            learning_rate=optimizer.param_groups[0]['lr'],
             additional_metrics={
                 "train_dice": avg_train_dice,
                 "val_dice": avg_val_dice,
@@ -160,18 +151,25 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             f"Epoch {epoch+1}: val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
         )
 
-        metric_to_compare = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
-        if best_val_dice is None or metric_to_compare > best_val_dice:
-            best_val_dice = metric_to_compare
-            model_persister = TorchModelPersister()
-            model_persister.save_model(model, cfg.paths.model_path)
-            logger.info(f"Saved best segmentation model (dice={metric_to_compare:.4f})")
+        dice_to_use = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
 
-    metric_tracker.end_training()
-    metric_tracker.save_to_json(cfg.paths.results_dir)
+        best_entry = metrics_tracker.get_best_metric("val_dice")
+        best_val = (best_entry.additional_metrics["val_dice"]
+                    if best_entry and not math.isnan(best_entry.additional_metrics["val_dice"])
+                    else float('-inf'))
 
-    plot_segmentation_curves(metric_tracker.get_summary_stats(), output_dir=cfg.paths.results_dir)
-    return {
-        "best_dice": best_val_dice if best_val_dice is not None else float("nan"),
-        "epochs": cfg.training.epochs,
-    }
+        if dice_to_use > best_val:
+            TorchModelPersister().save_model(model, cfg.paths.model_path)
+            logger.info(f"Saved best segmentation model (dice={dice_to_use:.4f})")
+                        
+
+    metrics_tracker.end_training()
+    metrics_tracker.save_to_json(cfg.paths.history_path)
+
+    summary = metrics_tracker.get_summary_stats()
+    logger.log_list_of_dicts(f"Training Summary", summary)
+
+    plotter = SegmentationPlots(output_directory=cfg.paths.run_root, training_history_path=cfg.paths.history_path)
+
+    plotter.plot_training_history()
+    plotter.plot_learning_rate_schedule()

@@ -1,20 +1,18 @@
-from deepfake.utils.model_persister import TorchModelPersister
 import torch
 import numpy as np
-import pandas as pd
+import os
 from dataclasses import asdict
 
 from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix
 from torch.utils.data import DataLoader
 
+from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.visualization.classification_plots import ClassificationPlots
+from deepfake.utils.evaluation_metrics_tracker import ClassificationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.visualization.plots import (
-    plot_classification_metrics,
-    plot_confusion_matrix,
-)
-from deepfake.utils.model_manager import check_model_exists, save_training_history
+from deepfake.utils.model_manager import check_model_exists
 from deepfake.utils.logger import SidLogger
 
 from .dataset import SIDClassificationDataset
@@ -26,10 +24,6 @@ def evaluate(logger: SidLogger, cfg: Config):
     device = torch.device(cfg.training.device)
 
     logger.log_evaluation_config(asdict(cfg))
-
-    logger.info("=" * 60)
-    logger.info("EVALUATION MODE")
-    logger.info("=" * 60)
 
     check_model_exists(cfg.paths.model_path)
 
@@ -56,6 +50,8 @@ def evaluate(logger: SidLogger, cfg: Config):
         shuffle=cfg.loader.shuffle_test,
         num_workers=cfg.loader.num_workers,
     )
+
+    metrics_tracker = EvaluationMetricsTracker(ClassificationEvaluationMetrics, logger=logger)
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     model_persister = TorchModelPersister()
@@ -84,32 +80,33 @@ def evaluate(logger: SidLogger, cfg: Config):
         all_preds,
         target_names=list(cfg.model.class_names),
         output_dict=True,
+        zero_division=0 
     )
     logger.log_classification_report(report_dict)
 
     cm = confusion_matrix(all_labels, all_preds)
     logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
 
-    results = {
-        "accuracy": accuracy,
-        "class_names": list(cfg.model.class_names),
-        "classification_report": report_dict,
-        "confusion_matrix": cm.tolist(),
-    }
-    logger.save_json(results, "outputs/results/classification/evaluation.json")
+    # Instead of passing a dict, create a proper metrics object:
+    metrics_tracker.add_metrics(ClassificationEvaluationMetrics(
+        task_type="classification",
+        primary_metric="accuracy",
+        primary_score=accuracy / 100.0,  # Convert percentage to decimal
+        accuracy=accuracy / 100.0,
+        classification_report=report_dict,
+        confusion_matrix=cm.tolist(),
+        class_names=list(cfg.model.class_names)
+    ))
 
-    save_training_history(cfg.paths.results_dir, results, history_file="evaluation.json")
+    metrics_tracker.save_to_json(cfg.paths.metrics_path)
 
     logger.info("Generating visualizations...")
-    plot_confusion_matrix(
-        cm,
-        cfg.model.class_names,
-        output_dir=cfg.paths.results_dir,
+    classification_plotter = ClassificationPlots(
+        eval_history_path=cfg.paths.metrics_path,
+        output_directory=cfg.paths.run_root
     )
-    plot_classification_metrics(
-        report_dict,
-        class_names=cfg.model.class_names,
-        output_dir=cfg.paths.results_dir,
-    )
+    
+    classification_plotter.plot_confusion_matrix(save_path=cfg.paths.run_root)
+    classification_plotter.plot_classification_report(save_path=cfg.paths.run_root)
 
     logger.info("Evaluation complete.")
