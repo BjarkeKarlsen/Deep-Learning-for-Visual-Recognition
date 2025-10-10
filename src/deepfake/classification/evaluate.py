@@ -98,15 +98,15 @@ def evaluate(logger: SidLogger, cfg: Config):
         class_names=list(cfg.model.class_names)
     ))
 
-    metrics_tracker.save_to_json(cfg.paths.eval_metrics_path)
+    metrics_tracker.save_to_json(cfg.paths.metrics_path)
 
     logger.info("Generating visualizations...")
     classification_plotter = ClassificationPlots(
-        eval_history_path=cfg.paths.eval_metrics_path,
-        output_directory=cfg.paths.output_dir
+        eval_history_path=cfg.paths.metrics_path,
+        output_directory=cfg.paths.run_root
     )
     
-    classification_plotter.plot_confusion_matrix(save_path=cfg.paths.output_dir)
-    classification_plotter.plot_classification_report(save_path=cfg.paths.output_dir)
+    classification_plotter.plot_confusion_matrix(save_path=cfg.paths.run_root)
+    classification_plotter.plot_classification_report(save_path=cfg.paths.run_root)
 
     logger.info("Evaluation complete.")

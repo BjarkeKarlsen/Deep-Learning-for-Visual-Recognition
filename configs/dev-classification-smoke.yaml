@@ -1,39 +1,30 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 200
-  val_samples: 30
-  test_samples: 50
+  train_samples: 1
+  val_samples: 1
+  test_samples: 1
   use_streaming: true
   use_disk_cache: false
 
 loader:
-  batch_size: 32
+  batch_size: 1
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
-  num_workers: 4
+  num_workers: 0
 
 model:
-  class_names:
-    - Real
-    - Synthetic
-    - Tampered
-  normalize_mean:
-    - 0.485
-    - 0.456
-    - 0.406
-  normalize_std:
-    - 0.229
-    - 0.224
-    - 0.225
+  class_names: ["Real","Synthetic","Tampered"]
+  normalize_mean: [0.485,0.456,0.406]
+  normalize_std: [0.229,0.224,0.225]
 
 training:
-  epochs: 10
+  epochs: 1
   learning_rate: 0.0005
   seed: 42
-  device: cuda
-  save_interval: 5
+  device: cpu
+  save_interval: 1
 
 paths:
   base: outputs
@@ -41,4 +32,4 @@ paths:
   model_filename: best_model.pth
   history_filename: history.json
   metrics_filename: evaluation_metrics.json
-  log_filename: logs
+  log_filename: train.log

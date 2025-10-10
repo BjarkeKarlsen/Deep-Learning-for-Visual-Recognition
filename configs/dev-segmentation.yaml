@@ -32,8 +32,8 @@ training:
 
 paths:
   base: outputs
-  env: dev
+  task: segmentation
   model_filename: best_model.pth
   history_filename: history.json
-  eval_metrics_filename: evaluation_metrics.json
-  log_subdir: logs
+  metrics_filename: evaluation_metrics.json
+  log_filename: logs

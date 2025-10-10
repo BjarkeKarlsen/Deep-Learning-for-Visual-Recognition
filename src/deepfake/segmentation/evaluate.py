@@ -130,13 +130,13 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     results = {"dice_coefficient": mean_dice, "mean_iou": mean_iou}
     logger.save_json(results, "segmentation_evaluation.json")
-    evaluation_metrics_path = os.path.join(cfg.paths.output_dir, "evaluation_metrics.json")
+    evaluation_metrics_path = os.path.join(cfg.paths.run_root, "evaluation_metrics.json")
     # plotter = SegmentationPlots()
     # for idx, (im, true_m, pred_m) in enumerate(gallery, start=1):
     #     save_path = cfg.paths.output_dir / f"segmentation_example_{idx}.png"
     #     plotter.plot_segmentation(im, true_m, pred_m, save_path=str(save_path))
-    plotter = SegmentationPlots(output_directory=str(cfg.paths.output_dir), eval_history_path=str(evaluation_metrics_path))
-    gallery_path = cfg.paths.output_dir / "segmentation_gallery.png"
+    plotter = SegmentationPlots(output_directory=str(cfg.paths.run_root), eval_history_path=str(evaluation_metrics_path))
+    gallery_path = cfg.paths.run_root / "segmentation_gallery.png"
     plotter.plot_segmentation_gallery(gallery, ncols=3, save_path=str(gallery_path))
     metrics_tracker.save_to_json(evaluation_metrics_path)
 

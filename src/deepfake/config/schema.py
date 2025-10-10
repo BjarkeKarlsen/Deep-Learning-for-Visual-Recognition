@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
@@ -13,7 +14,6 @@ class DataConfig:
     use_streaming: bool = True
     use_disk_cache: bool = True
 
-
 @dataclass
 class LoaderConfig:
     batch_size: int = 4
@@ -21,7 +21,6 @@ class LoaderConfig:
     shuffle_val: bool = False
     shuffle_test: bool = False
     num_workers: int = 4
-
 
 @dataclass
 class ModelConfig:
@@ -35,7 +34,6 @@ class ModelConfig:
         # Cache the class count so downstream consumers skip recomputing len(class_names).
         self.num_classes = len(self.class_names)
 
-
 @dataclass
 class TrainingConfig:
     epochs: int = 100
@@ -44,53 +42,55 @@ class TrainingConfig:
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     save_interval: int = 5  # Save a checkpoint every N epochs
 
-
 @dataclass
 class PathsConfig:
-    base: Path = Path("outputs")
-    env: str = "dev"
-    task: str = "segmentation"
+    base: Path = Path("outputs") 
+    run_id: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%dT%H%M%SZ"))
+    task: str = ""
     model_filename: str = "best_model.pth"
     history_filename: str = "history.json"
-    eval_metrics_filename: str = "evaluation_metrics.json"
-    log_subdir: str = "logs"
-
+    metrics_filename: str = "metrics.json"
+    log_filename: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%dT%H%M%SZ") + ".log")
+    args_filename: str = "args.json"
+    
     def __post_init__(self):
-        self.base.mkdir(parents=True, exist_ok=True)
-
+        # create the run root
+        (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
+    
     @property
-    def model_dir(self) -> Path:
-        return self.base / "models" / self.task / self.env 
+    def run_root(self) -> Path:
+        return self.base / self.task / "runs" / self.run_id
 
     @property
     def model_path(self) -> Path:
-        p = self.model_dir / self.model_filename
+        p = self.run_root / self.model_filename
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
     @property
-    def output_dir(self) -> Path:
-        p = self.base / "results" / self.task / self.env
-        p.mkdir(parents=True, exist_ok=True)
-        return p
-
-    @property
     def history_path(self) -> Path:
-        return self.output_dir / self.history_filename
-
-    @property
-    def eval_metrics_path(self) -> Path:
-        """
-        Path to save/load evaluation metrics JSON.
-        """
-        return self.output_dir / self.eval_metrics_filename
-
-    @property
-    def log_dir(self) -> Path:
-        p = self.base / self.log_subdir / self.task / self.env
-        p.mkdir(parents=True, exist_ok=True)
+        p = self.run_root / self.history_filename
+        p.parent.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def metrics_path(self) -> Path:
+        p = self.run_root / self.metrics_filename
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def log_path(self) -> Path:
+        p = self.run_root / self.log_filename
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @property
+    def args_path(self) -> Path:
+        p = self.run_root / self.args_filename
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    
 @dataclass(frozen=True)
 class TaskConfig:
     CLASSIFICATION: str = "classification"
