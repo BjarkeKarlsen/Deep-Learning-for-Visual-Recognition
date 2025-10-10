@@ -2,7 +2,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import InterpolationMode
-from torchvision.transforms.v2 import Compose, Grayscale, Normalize, Resize, ToDtype, ToImage
+from torchvision.transforms.v2 import Compose, Grayscale, Normalize, Resize, ToDtype, ToImage, ToTensor
 
 
 class TamperedSegmentationDataset(Dataset):
