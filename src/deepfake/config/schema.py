@@ -63,8 +63,9 @@ class PathsConfig:
     args_filename: str = "args.json"
     
     def __post_init__(self):
-        # create the run root
-        (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
+        # Defer directory creation until the task name is populated.
+        if self.task:
+            (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
     
     @property
     def run_root(self) -> Path:

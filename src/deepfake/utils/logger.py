@@ -1,13 +1,14 @@
+import json
 import logging
 import os
-import json
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, ContextManager
-from contextlib import contextmanager
+
 import numpy as np
 import pandas as pd
-
+import yaml
 
 class SidLogger(logging.Logger):
     """Experiment logger with console/file sinks, metric formatters, and timing helpers."""
@@ -93,6 +94,30 @@ class SidLogger(logging.Logger):
                 self.logger.info(f"  {values}")
             self.logger.info("")
         self.logger.info("=" * 60)
+        self._persist_resolved_config(config)
+    
+    def _persist_resolved_config(self, config: Dict[str, Any]) -> None:
+        """Write the merged configuration to YAML alongside the log output."""
+        if not self.file:
+            return
+        run_root = self.log_dir.parent
+        try:
+            run_root.mkdir(parents=True, exist_ok=True)
+            target = run_root / "config_used.yaml"
+            with target.open("w", encoding="utf-8") as f:
+                yaml.safe_dump(self._normalise_config(config), f, sort_keys=False)
+        except Exception as exc:
+            self.logger.warning(f"Failed to persist resolved config: {exc}")
+    
+    def _normalise_config(self, value: Any) -> Any:
+        """Recursively convert config values into YAML-friendly types."""
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {k: self._normalise_config(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [self._normalise_config(v) for v in value]
+        return value
     
     def log_evaluation_config(self, config: Dict[str, Any]):
         """Log the resolved evaluation configuration dictionary one key per line."""
