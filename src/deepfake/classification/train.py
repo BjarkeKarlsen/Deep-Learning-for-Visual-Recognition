@@ -1,15 +1,14 @@
-import os
 from dataclasses import asdict
-from deepfake.utils.model_persister import TorchModelPersister
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
 from deepfake.utils.logger import SidLogger as SidLogger
+from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.classification_plots import ClassificationPlots
 from .dataset import SIDClassificationDataset
@@ -61,7 +60,7 @@ def train(logger: SidLogger, cfg: Config):
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    optimizer = build_optimizer(model.parameters(), cfg.training)
 
     best_val_acc = None
     best_epoch = None

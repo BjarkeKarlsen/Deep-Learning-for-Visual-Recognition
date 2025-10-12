@@ -33,6 +33,14 @@ training:
   epochs: 10
   learning_rate: 0.001
   seed: 42
+  optimizer:
+    name: adam
+    weight_decay: 0.0
+    betas:
+      - 0.9
+      - 0.999
+    momentum: 0.9
+    nesterov: false
 
 paths:
   base: outputs

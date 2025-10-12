@@ -1,189 +1,109 @@
-# CONFIGURATION GUIDE
+# Configuration Reference
 
-This document outlines how configuration is structured and consumed across the
-project.
+This page lists every configuration block the toolkit understands, along with the keys you can set in your YAML files. Each section shows the expected value type and the default delivered in `src/deepfake/config/default.yaml`.
 
----
-
-## 1. Schema (`src/deepfake/config/schema.py`)
-
-Configuration is defined with `dataclasses`, giving type hints, defaults, and a
-single canonical schema:
-
-```python
-from dataclasses import dataclass, field
-from typing import List, Optional
-
-
-@dataclass
-class DataConfig:
-    dataset_name: str = "saberzl/SID_Set"
-    image_size: int = 512
-    train_samples: int = 10
-    val_samples: int = 10
-    test_samples: int = 10
-    use_streaming: bool = True
-    use_disk_cache: bool = True
-
-
-@dataclass
-class LoaderConfig:
-    batch_size: int = 4
-    shuffle_train: bool = True
-    shuffle_val: bool = False
-    shuffle_test: bool = False
-    num_workers: int = 4
-
-
-@dataclass
-class ModelConfig:
-    class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
-    num_classes: int = field(init=False)
-    normalize_mean: List[float] = field(default_factory=lambda: [0.485, 0.456, 0.406])
-    normalize_std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
-    tampered_label: int = 2
-
-    def __post_init__(self) -> None:
-        self.num_classes = len(self.class_names)
-
-
-@dataclass
-class TrainingConfig:
-    epochs: int = 100
-    learning_rate: float = 0.001
-    seed: int = 42
-    device: str = "cpu"  # updated at runtime depending on CUDA availability
-
-
-@dataclass
-class PathsConfig:
-    model_path: str = "outputs/models/best_model.pth"
-    results_dir: str = "outputs/results"
-    history_file: str = "training_history.json"
-    logging_dir: Optional[str] = "outputs/logs"
-
-
-@dataclass
-class Config:
-    data: DataConfig = field(default_factory=DataConfig)
-    loader: LoaderConfig = field(default_factory=LoaderConfig)
-    model: ModelConfig = field(default_factory=ModelConfig)
-    training: TrainingConfig = field(default_factory=TrainingConfig)
-    paths: PathsConfig = field(default_factory=PathsConfig)
-```
+## Using A Config File
+- Copy one of the samples in `configs/` and adjust the keys you need.
+- Run the CLI with the file: `deepfake-cli train --task classification --config configs/my-run.yaml`.
+- Any key you omit falls back to the defaults below.
 
 ---
 
-## 2. Baseline values (`src/deepfake/config/default.yaml`)
+## `data`
+Controls dataset selection and sampling.
 
-`default.yaml` mirrors the schema and ships the repository’s baseline settings:
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `dataset_name` | str | `saberzl/SID_Set` | Hugging Face dataset identifier. |
+| `image_size` | int | `224` | Square edge length after transforms. |
+| `train_samples` | int | `10` | Max samples pulled into the training split (omit for full dataset when not streaming). |
+| `val_samples` | int | `10` | Max validation samples. |
+| `test_samples` | int | `10` | Max test samples. |
+| `use_streaming` | bool | `true` | Stream data from HF (requires explicit sample caps). |
+| `use_disk_cache` | bool | `true` | Cache derived splits on disk for reuse. |
+
+---
+
+## `loader`
+PyTorch `DataLoader` knobs.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `batch_size` | int | `4` | Mini-batch size for all splits. |
+| `shuffle_train` | bool | `true` | Shuffle training batches. |
+| `shuffle_val` | bool | `false` | Shuffle validation sampler. |
+| `shuffle_test` | bool | `false` | Shuffle test sampler. |
+| `num_workers` | int | `4` | Worker processes per loader. |
+
+---
+
+## `model`
+Pre-processing and label handling.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `class_names` | list[str] | `["Real","Synthetic","Tampered"]` | Ordered class labels (classification task). |
+| `normalize_mean` | list[float] | `[0.485,0.456,0.406]` | Channel-wise normalisation mean. |
+| `normalize_std` | list[float] | `[0.229,0.224,0.225]` | Channel-wise normalisation std. |
+| `tampered_label` | int | `2` | Index used as the tampered class (segmentation). |
+
+`num_classes` is computed automatically from `class_names`.
+
+---
+
+## `training`
+Hyperparameters shared across tasks.
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `epochs` | int | `10` | Number of training epochs. |
+| `learning_rate` | float | `0.001` | Base learning rate passed to the optimizer. |
+| `seed` | int | `42` | Global RNG seed. |
+| `device` | str | Auto-set (`"cuda"` if available, else `"cpu"`). Override only when needed. |
+| `save_interval` | int | `5` | Save a checkpoint every N epochs (classification). |
+| `optimizer` | mapping | see below | Configure the optimiser family and hyperparameters. |
+
+### `training.optimizer`
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `name` | str | `adam` | Supported values: `adam`, `adamw`, `sgd`. Comparison is case-insensitive. |
+| `weight_decay` | float | `0.0` | L2 weight decay (applies to all optimisers). |
+| `betas` | list[float] | `[0.9, 0.999]` | Only used for Adam/AdamW; must contain two floats. |
+| `momentum` | float | `0.9` | Used when `name: sgd`. |
+| `nesterov` | bool | `false` | Enable Nesterov momentum for SGD. |
+
+Example override:
 
 ```yaml
-# src/deepfake/config/default.yaml
-
-data:
-  dataset_name: saberzl/SID_Set
-  image_size: 224
-  train_samples: 10
-  val_samples: 10
-  test_samples: 10
-  use_streaming: true
-  use_disk_cache: true
-
-loader:
-  batch_size: 4
-  shuffle_train: true
-  shuffle_val: false
-  shuffle_test: false
-  num_workers: 4
-
-model:
-  class_names:
-    - Real
-    - Synthetic
-    - Tampered
-  normalize_mean:
-    - 0.485
-    - 0.456
-    - 0.406
-  normalize_std:
-    - 0.229
-    - 0.224
-    - 0.225
-  tampered_label: 2
-
 training:
-  epochs: 10
-  learning_rate: 0.001
-  seed: 42
-
-paths:
-  model_path: outputs/models/best_model.pth
-  results_dir: outputs/results
-  history_file: training_history.json
-  logging_dir: outputs/logs
+  learning_rate: 0.0003
+  optimizer:
+    name: adamw
+    weight_decay: 0.01
+    betas: [0.9, 0.95]
 ```
-
-These defaults remain untouched at runtime and serve as documentation plus a
-fallback for any missing keys in user overrides.
 
 ---
 
-## 3. Override files (`configs/classification.yaml`, `configs/segmentation.yaml`, ...)
+## `paths`
+Output locations. Paths are expanded relative to the repository root.
 
-Override files live under `configs/` and are passed explicitly via the
-`--config` CLI flag. Example (after installing the package with `pip install -e .`):
-
-```bash
-deepfake-cli --train --task classification --config configs/classification.yaml
-deepfake-cli --train --task segmentation   --config configs/segmentation.yaml
-```
-
-Each override file can change any subset of keys. When a key is omitted it
-falls back to `default.yaml` (and ultimately to dataclass defaults). You can
-create additional configs—e.g. `cp configs/classification.yaml configs/large-run.yaml`—and point `--config`
-at that path.
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `base` | str | `outputs` | Root directory for run artefacts. |
+| `task` | str | `""` | Filled in automatically by the CLI (`classification`/`segmentation`). |
+| `model_filename` | str | `best_model.pth` | Filename used when saving checkpoints. |
+| `history_filename` | str | `history.json` | Training history file. |
+| `metrics_filename` | str | `evaluation_metrics.json` | Evaluation results file. |
+| `log_filename` | str | Timestamped by default | Logfile name within the run directory. |
+| `args_filename` | str | `args.json` | Stores CLI arguments for auditing. |
 
 ---
 
-## 4. Loading configuration (`src/deepfake/utils/config_loader.py`)
+## Checklist When Editing Configs
+1. Duplicate a template under `configs/` so you keep a record for each run.
+2. Adjust the sections above—most experiments change `data`, `training`, and `training.optimizer`.
+3. Point the CLI to your file with `--config`.
+4. Keep output paths unique per run so results don’t overwrite each other.
 
-`ConfigLoader` merges the schema + defaults + optional overrides and normalises
-paths so scripts work regardless of the current working directory:
-
-```python
-from deepfake.utils.config_loader import ConfigLoader
-
-loader = ConfigLoader(config_path="configs/classification.yaml")
-cfg = loader.get_config()
-```
-
-Key behaviours:
-
-- `OmegaConf.structured(Config)` initialises the schema with type safety.
-- `default.yaml` is merged next.
-- When `config_path` is provided, it is merged on top (the CLI requires this via
-  `--config`).
-- `cfg.training.device` is set to `"cuda"` when a GPU is available, otherwise
-  `"cpu"`.
-- `cfg.paths.model_path`, `cfg.paths.results_dir`, and (if set)
-  `cfg.paths.logging_dir` are converted to absolute paths anchored to the repo
-  root.
-- The loader creates results and logging directories eagerly to avoid race
-  conditions later in the pipeline.
-
-### CLI helper
-
-```bash
-# Inspect the merged configuration (after `pip install -e .`)
-python -m deepfake.utils.config_loader --config configs/classification.yaml
-
-# Dump the baseline template somewhere else
-python -m deepfake.utils.config_loader --dump-default --output configs/custom.yaml
-# Add --force to overwrite an existing file
-```
-
-Together these pieces provide a predictable configuration story: dataclasses
-establish the schema, `default.yaml` defines canonical defaults, override files
-are explicit per-run knobs, and `ConfigLoader` ties everything together at
-runtime.
+That’s it: the dataclasses enforce types, defaults fill in the gaps, and any YAML override you supply becomes the source of truth for a run.

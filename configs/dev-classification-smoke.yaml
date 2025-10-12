@@ -25,6 +25,9 @@ training:
   seed: 42
   device: cpu
   save_interval: 1
+  optimizer:
+    name: adam
+    weight_decay: 0.0
 
 paths:
   base: outputs

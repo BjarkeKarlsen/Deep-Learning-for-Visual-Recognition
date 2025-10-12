@@ -34,6 +34,9 @@ training:
   seed: 42
   device: cuda
   save_interval: 5
+  optimizer:
+    name: adam
+    weight_decay: 0.0
 
 paths:
   base: outputs
