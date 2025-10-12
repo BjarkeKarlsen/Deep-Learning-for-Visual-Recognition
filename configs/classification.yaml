@@ -35,8 +35,11 @@ training:
   device: cuda
   save_interval: 5
   optimizer:
-    name: adam
-    weight_decay: 0.0
+    name: adamw
+    weight_decay: 0.01
+    betas:
+      - 0.9
+      - 0.95
 
 paths:
   base: outputs
