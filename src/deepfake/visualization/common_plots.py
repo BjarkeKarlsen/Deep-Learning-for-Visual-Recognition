@@ -7,19 +7,14 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 class CommonPlots:
-    """Base class for all plotting functionality with common utilities."""
+    """Base class for plotting, with unified save logic."""
 
-    def __init__(self, output_dir: str = None, load_training: str = None, load_evaluation: str = None):
-        self.output_path = output_dir
-        self.load_training = load_training
-        self.load_evaluation = load_evaluation
-        self.default_save_path = Path("results")
-        
-        
-        # Set up default styling
-        self._setup_plotting_style()
-    
-    def _setup_plotting_style(self):
+    def __init__(self, output_dir: Optional[Union[str, Path]] = None):
+        self.output_dir = Path(output_dir) if output_dir else Path("results")
+        self._create_save_path(self.output_dir)
+        self._setup_plot_style()
+
+    def _setup_plot_style(self):
         """Set up consistent plotting style across all plots."""
         plt.style.use('default')
         sns.set_palette("husl")
@@ -32,15 +27,6 @@ class CommonPlots:
             'legend.fontsize': 10,
             'grid.alpha': 0.3
         })
-    
-    def _resolve_path(self, save_path: str = None, default_filename: str = "plot.png") -> Path:
-        """Build the final path using the provided save_path or instance save_path_dir."""
-        if save_path:
-            return Path(save_path)
-
-         # Use instance save_path or fallback to default
-        base_dir = Path(self.output_path) if self.output_path else self.default_save_path
-        return base_dir / default_filename
     
     def _create_save_path(self, path: Path) -> Path:
         """Create save_path directory if it doesn't exist."""
@@ -157,12 +143,39 @@ class CommonPlots:
             report = json.load(f)
         return report
     
-    def save_plot(self, path: Path, dpi: int = 300, bbox_inches: str = 'tight', 
-                  facecolor: str = 'white'):
-        """Save the current plot with consistent settings."""
-        self._create_save_path(path)
-        plt.savefig(path, dpi=dpi, bbox_inches=bbox_inches, facecolor=facecolor)
-        plt.close()
-        print(f"Saved plot to {path}")
+    def save_plot(
+        self,
+        fig: plt.Figure,
+        filename: Optional[str] = None,
+        save_path: Optional[Union[str, Path]] = None,
+        dpi: int = 300,
+        bbox_inches: str = 'tight',
+        facecolor: str = 'white'
+    ) -> Path:
+        """
+        Save a matplotlib Figure with minimal ceremony.
+
+        Args:
+            fig: the Figure to save
+            filename: desired filename (with extension); default 'plot.png'
+            save_dir: directory path to save into; defaults to instance output_dir
+            dpi, bbox_inches, facecolor: passed to plt.savefig
+
+        Returns:
+            The full Path to the saved file.
+        """
+        # Determine directory
+        directory = Path(save_path) if save_path else self.output_dir
+        directory.mkdir(parents=True, exist_ok=True)
+
+        # Determine filename
+        fname = filename or "plot.png"
+        path = directory / fname
+
+        # Save and close
+        fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches, facecolor=facecolor)
+        plt.close(fig)
+        print(f"Saved plot -> {path}")
+        return path
         
     
