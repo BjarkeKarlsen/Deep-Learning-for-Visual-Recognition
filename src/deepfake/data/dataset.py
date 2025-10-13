@@ -2,7 +2,8 @@ import torch
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.v2 import Compose, Resize, Grayscale, Normalize, ToImage, ToDtype
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
+from datasets import IterableDataset as HFIterableDataset, Dataset as HFDataset
     
 
 class SIDClassificationDataset(Dataset):
@@ -28,11 +29,37 @@ class SIDClassificationDataset(Dataset):
                  normalize_mean,
                  normalize_std,
                  transform=None,
-                 transform_mask=None):
+                 transform_mask=None,
+                 max_samples=None,
+                 return_mask=False,
+                 return_label=False
+                 ):  # Add max_samples for streaming datasets
         self.dataset        = dataset
         self.image_size     = image_size
         self.normalize_mean = normalize_mean
         self.normalize_std  = normalize_std
+        self.transform      = transform
+        self.transform_mask = transform_mask
+        self.max_samples = max_samples 
+        self.return_mask = return_mask
+        self.return_label = return_label
+        self.is_streaming = isinstance(dataset, (HFIterableDataset, IterableDataset))
+        
+        if self.is_streaming:
+            print(f"Converting streaming dataset to Dataset object...")
+            
+            # Take the samples we need and convert to Dataset
+            samples = []
+            for i, sample in enumerate(dataset):
+                if max_samples and i >= max_samples:
+                    break
+                samples.append(sample)
+            
+            # Create a proper HF Dataset object from the samples
+            self.dataset = HFDataset.from_list(samples)
+            self.is_streaming = False
+            print(f"Converted {len(samples)} samples to Dataset object")
+
 
         # Default to the segmentation-style preprocessing so outputs stay aligned across tasks.
         if transform is None:
@@ -61,8 +88,8 @@ class SIDClassificationDataset(Dataset):
         
     def __len__(self):
         return len(self.dataset)
-
-    def __getitem__(self, idx):
+    
+    def __getitem__(self, idx) -> dict:
         """Return a transformed sample dict and inject zero masks when the source omits them."""
         if torch.is_tensor(idx):
             idx = idx.tolist()
@@ -74,27 +101,34 @@ class SIDClassificationDataset(Dataset):
             f"Image has wrong shape: {image.shape}"
         )
 
-        mask_tensor = None
-        if self.transform_mask:
+
+
+        label = torch.tensor(example["label"], dtype=torch.long)
+
+        outputs = {"image": image}
+        
+         # Mask
+        mask_tensor :torch.Tensor = None
+        if self.return_mask:
             raw_mask = example.get("mask")
             if raw_mask is not None:
                 mask_tensor = self.transform_mask(raw_mask)
             else:
-                mask_tensor = torch.zeros(
-                    (1, self.image_size, self.image_size),
-                    dtype=torch.float32,
-                )
+                raise ValueError("Expected mask but sample has none")
+
             if mask_tensor.ndim == 2:
                 mask_tensor = mask_tensor.unsqueeze(0)
             assert mask_tensor.ndim == 3 and mask_tensor.shape[1:] == (self.image_size, self.image_size), (
                 f"Mask has wrong shape: {mask_tensor.shape}"
             )
+            
+            outputs.update({"mask": mask_tensor})
+         
+        # Label
+        if self.return_label:
+            label = example.get("label")
+            if label is None:
+                raise ValueError("Expected label but sample has none")
+            outputs.update({"label": torch.tensor(label, dtype=torch.long)})
 
-        label = torch.tensor(example["label"], dtype=torch.long)
-
-        sample = {"image": image, "label": label}
-        if mask_tensor is not None:
-            # Classification still exposes a mask tensor—zeros when missing—so
-            # downstream utilities can treat both tasks uniformly.
-            sample["mask"] = mask_tensor
-        return sample
+        return outputs
