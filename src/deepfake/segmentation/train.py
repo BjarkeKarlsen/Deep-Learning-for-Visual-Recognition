@@ -1,5 +1,4 @@
 import math
-import os
 from dataclasses import asdict
 from typing import Dict
 
@@ -8,14 +7,15 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
-from deepfake.visualization.segmentation_plots import SegmentationPlots
 from deepfake.utils.logger import SidLogger
+from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
-from deepfake.config import Config
+from deepfake.visualization.segmentation_plots import SegmentationPlots
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Measure overlap between predicted and ground-truth masks (Dice score)."""
@@ -75,7 +75,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
+    optimizer = build_optimizer(model.parameters(), cfg.training)
     
     metrics_tracker = TrainingMetricsTracker()
 

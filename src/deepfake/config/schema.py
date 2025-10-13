@@ -35,12 +35,21 @@ class ModelConfig:
         self.num_classes = len(self.class_names)
 
 @dataclass
+class OptimizerConfig:
+    name: str = "adam"
+    weight_decay: float = 0.0
+    betas: List[float] = field(default_factory=lambda: [0.9, 0.999])
+    momentum: float = 0.9
+    nesterov: bool = False
+
+@dataclass
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
     seed: int = 42
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     save_interval: int = 5  # Save a checkpoint every N epochs
+    optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
 
 @dataclass
 class PathsConfig:
@@ -54,8 +63,9 @@ class PathsConfig:
     args_filename: str = "args.json"
     
     def __post_init__(self):
-        # create the run root
-        (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
+        # Defer directory creation until the task name is populated.
+        if self.task:
+            (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
     
     @property
     def run_root(self) -> Path:

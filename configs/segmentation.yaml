@@ -29,6 +29,12 @@ training:
   epochs: 10
   learning_rate: 0.0003
   seed: 42
+  optimizer:
+    name: adamw
+    weight_decay: 0.01
+    betas:
+      - 0.9
+      - 0.95
 
 paths:
   base: outputs

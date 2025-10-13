@@ -94,36 +94,36 @@ See `docs/Configuration.md` for field-by-field details.
 ---
 
 ## 3. Run Pipelines
-nce you’ve installed the package (e.g. via `pip install -e .`), the `deepfake` entry point is available on your PATH. Below are the primary commands and options:
+Once you’ve installed the package (e.g. via `pip install -e .`), the `deepfake-cli` entry point is available on your PATH. Below are the primary commands and options:
 
 Train a model
 
 ```bash
-deepfake train --task <classification|segmentation> [--env <dev|test>]
+deepfake-cli train --task <classification|segmentation> [--env <dev|test>]
 ```
 
 Example (classification in dev):
 
 ```bash
-deepfake train --task classification --env dev
+deepfake-cli train --task classification --env dev
 ```
 
 Example (segmentation in test):
 
 ```bash
-deepfake train --task segmentation --env test
+deepfake-cli train --task segmentation --env test
 ```
 
 Evaluate a trained model
 
 ```bash
-deepfake eval --task <classification|segmentation> --runid <RUN_ID> [--env <dev|test>]
+deepfake-cli eval --task <classification|segmentation> --runid <RUN_ID> [--env <dev|test>]
 ```
 
 Example (eval segmentation run):
 
 ```bash
-deepfake eval --task segmentation --runid 20251010T130000Z --env test
+deepfake-cli eval --task segmentation --runid 20251010T130000Z --env test
 ```
 
 If you omit `--runid`, it defaults to the current timestamp–based ID in your config.
@@ -131,25 +131,25 @@ If you omit `--runid`, it defaults to the current timestamp–based ID in your c
 Plot metrics from history or evaluation
 
 ```bash
-deepfake plot --task <classification|segmentation> --stage <train|eval> [--runid <RUN_ID>] [--env <dev|test>]
+deepfake-cli plot --task <classification|segmentation> --stage <train|eval> [--runid <RUN_ID>] [--env <dev|test>]
 ```
 
 Plot training curves for classification (dev):
 
 ```bash
-deepfake plot --task classification --stage train --env dev
+deepfake-cli plot --task classification --stage train --env dev
 ```
 
 Plot evaluation confusion matrix for classification (test):
 
 ```bash
-deepfake plot --task classification --stage eval --runid 20251010T130000Z --env test
+deepfake-cli plot --task classification --stage eval --runid 20251010T130000Z --env test
 ```
 
 Plot training history for segmentation (dev):
 
 ```bash
-deepfake plot --task segmentation --stage train --env dev
+deepfake-cli plot --task segmentation --stage train --env dev
 ```
 ### 3.1 Options
 
