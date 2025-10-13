@@ -67,12 +67,11 @@ def run_eval(cfg : Config, args):
 
 
 def run_plot(cfg: Config, args):
-    run_root = cfg.paths.run_root
     if args.task == cfg.Task.CLASSIFICATION:
         plots = ClassificationPlots(
             training_history_path=cfg.paths.history_path if args.stage=="train" else None,
             eval_history_path=   cfg.paths.metrics_path  if args.stage=="eval"  else None,
-            output_directory=run_root
+            output_directory=cfg.paths.run_root
         )
         if args.stage == "train":
             plots.plot_training_history()
@@ -85,7 +84,7 @@ def run_plot(cfg: Config, args):
         plots = SegmentationPlots(
             training_history_path=cfg.paths.history_path if args.stage=="train" else None,
             eval_history_path=   cfg.paths.metrics_path  if args.stage=="eval"  else None,
-            output_directory=run_root
+            output_directory=cfg.paths.run_root
         )
         if args.stage == "train":
             plots.plot_training_history()

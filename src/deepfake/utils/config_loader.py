@@ -80,14 +80,6 @@ class ConfigLoader:
         if not path.exists():
             raise FileNotFoundError(f"Expected configuration file at {path}")
         return OmegaConf.load(path)
-
-    # def _normalize_paths(self, cfg: Config) -> None:
-    #     """Resolve relative paths in the config against the repository root."""
-    #     cfg.paths.model_filename = self._resolve_repo_path(cfg.paths.model_filename)
-        #cfg.paths.output_dir = self._resolve_repo_path(cfg.paths.output_dir)
-        #if cfg.paths.log_dir:
-        #    cfg.paths.log_dir = self._resolve_repo_path(cfg.paths.log_dir)
-
     def _resolve_repo_path(self, path_str: str) -> str:
         """Return an absolute path for repo-relative or user-relative inputs."""
         path = Path(path_str).expanduser()
@@ -122,7 +114,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite destination when using --dump-default",
     )
     return parser
-
 
 def main() -> None:
     parser = _build_parser()
