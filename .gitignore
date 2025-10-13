@@ -76,7 +76,6 @@ lightning_logs/
 *.pt
 *.ckpt
 docs/_build/
-outputs/
 
 # Dataset downloads and caches
 /data/
