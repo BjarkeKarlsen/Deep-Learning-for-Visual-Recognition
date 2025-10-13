@@ -91,7 +91,7 @@ class SIDClassificationDataset(Dataset):
         outputs = {"image": image}
         
          # Mask
-        mask_tensor :torch.Tensor = None
+        mask_tensor: torch.Tensor = None
         if self.return_mask:
             raw_mask = example.get("mask")
             if raw_mask is not None:
