@@ -1,0 +1,93 @@
+{
+    "task_type": "ClassificationEvaluationMetrics",
+    "total_evaluations": 1,
+    "created_at": "2025-10-11T13:35:09.846771",
+    "metrics_history": [
+        {
+            "task_type": "classification",
+            "primary_metric": "accuracy",
+            "primary_score": 0.8273333333333334,
+            "timestamp": "2025-10-11T13:35:09.846771",
+            "additional_metrics": {},
+            "accuracy": 0.8273333333333334,
+            "classification_report": {
+                "Real": {
+                    "precision": 0.7193347193347194,
+                    "recall": 0.7416934619506966,
+                    "f1-score": 0.7303430079155673,
+                    "support": 933.0
+                },
+                "Synthetic": {
+                    "precision": 0.9846005774783445,
+                    "recall": 0.9941690962099126,
+                    "f1-score": 0.9893617021276596,
+                    "support": 1029.0
+                },
+                "Tampered": {
+                    "precision": 0.7677677677677678,
+                    "recall": 0.7389210019267822,
+                    "f1-score": 0.7530682376043201,
+                    "support": 1038.0
+                },
+                "accuracy": 0.8273333333333334,
+                "macro avg": {
+                    "precision": 0.8239010215269439,
+                    "recall": 0.8249278533624639,
+                    "f1-score": 0.824257649215849,
+                    "support": 3000.0
+                },
+                "weighted avg": {
+                    "precision": 0.8270787434358174,
+                    "recall": 0.8273333333333334,
+                    "f1-score": 0.8270493495026233,
+                    "support": 3000.0
+                }
+            },
+            "confusion_matrix": [
+                [
+                    692,
+                    13,
+                    228
+                ],
+                [
+                    2,
+                    1023,
+                    4
+                ],
+                [
+                    268,
+                    3,
+                    767
+                ]
+            ],
+            "class_names": [
+                "Real",
+                "Synthetic",
+                "Tampered"
+            ]
+        }
+    ],
+    "summary": {
+        "latest_metrics": {
+            "task_type": "classification",
+            "primary_metric": "accuracy",
+            "primary_score": 0.8273333333333334,
+            "timestamp": "2025-10-11T13:35:09.846771",
+            "accuracy": 0.8273333333333334,
+            "num_classes": 3,
+            "macro_f1": 0.824257649215849,
+            "weighted_f1": 0.8270493495026233
+        },
+        "best_metrics": {
+            "task_type": "classification",
+            "primary_metric": "accuracy",
+            "primary_score": 0.8273333333333334,
+            "timestamp": "2025-10-11T13:35:09.846771",
+            "accuracy": 0.8273333333333334,
+            "num_classes": 3,
+            "macro_f1": 0.824257649215849,
+            "weighted_f1": 0.8270493495026233
+        },
+        "best_primary_score": 0.8273333333333334
+    }
+}
