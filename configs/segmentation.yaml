@@ -4,7 +4,7 @@ data:
   train_samples: 10
   val_samples: 10
   test_samples: 10
-  use_streaming: true
+  use_streaming: false
   use_disk_cache: true
 
 loader:
