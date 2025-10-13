@@ -6,10 +6,16 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from datasets import DownloadMode
+from torch.amp import autocast, GradScaler
+
 
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
 from deepfake.segmentation.dataset import TamperedSegmentationDataset
+from deepfake.data.dataset_manager import DatasetFilters, SIDDatasetManager, TRAIN, VALIDATION
+from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_persister import TorchModelPersister
@@ -18,66 +24,90 @@ from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMet
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
-    """Measure overlap between predicted and ground-truth masks (Dice score)."""
+    """
+    Computes the Dice Coefficient over a batch:
+      Inputs:
+        logits:  Tensor of shape (N,1,H,W)
+        targets: Tensor of shape (N,1,H,W)
+    Returns:
+        single scalar Dice score across all N×H×W pixels
+    """
+    # 1. Convert logits → probabilities
     probs = torch.sigmoid(logits)
-    preds = (probs > 0.5).float()  # 0.5 maps logits to the binary tamper mask expected downstream
-    targets = (targets > 0.5).float()
+    # 2. Binarize predictions and targets
+    preds = (probs > 0.5).float()
+    targs = (targets > 0.5).float()
 
-    intersection = (preds * targets).sum(dim=(1, 2, 3))
-    union = preds.sum(dim=(1, 2, 3)) + targets.sum(dim=(1, 2, 3))
-    dice = (2 * intersection + eps) / (union + eps)
-    return dice.mean()
+    # 3. Flatten batch and spatial dims → (N*H*W)
+    preds_flat = preds.view(-1)
+    targs_flat = targs.view(-1)
 
+    # 4. Compute intersection and union
+    intersection = (preds_flat * targs_flat).sum()
+    union = preds_flat.sum() + targs_flat.sum()
 
-def prepare_dataloader(dataset, cfg: Config, *, shuffle: bool) -> DataLoader:
-    """Wrap filtered HF splits with PyTorch loaders (or return None if empty)."""
-    if dataset is None or len(dataset) == 0:
-        return None
-
-    wrapped = TamperedSegmentationDataset(
-        dataset,
-        image_size=cfg.data.image_size,
-        normalize_mean=cfg.model.normalize_mean,
-        normalize_std=cfg.model.normalize_std,
-    )
-    return DataLoader(
-        wrapped,
-        batch_size=cfg.loader.batch_size,
-        shuffle=shuffle,
-        num_workers=cfg.loader.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
-
+    # 5. Dice Coefficient
+    dice = (2.0 * intersection + eps) / (union + eps)
+    return dice
 
 def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     """Optimise the U-Net on tampered examples and log training history."""
     device = torch.device(cfg.training.device)
     logger.log_training_config(asdict(cfg))
 
-    with SIDDatasetManager(
+    manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
-        use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    ) as manager:
-        train_ds, val_ds, _ = manager.get_segmentation_splits(
-            tampered_label=getattr(cfg.model, "tampered_label", 2),
-            train_max=cfg.data.train_samples,
-            val_max=cfg.data.val_samples,
-            test_max=None,
-        )
+        download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
+    )
 
-    train_loader = prepare_dataloader(train_ds, cfg, shuffle=cfg.loader.shuffle_train)
-    # TODO: FIX THIS AND CREATE A NEW AND DO NOT THROW EXCEPTION. PREPARE DATALOADER SHOULD INSTEAD ALWAYS CREATE LEGIT DATA
-    if train_loader is None:
-        raise RuntimeError("No tampered samples with masks found for training")
+    train_ds = manager.get_split(
+        split_type=TRAIN,
+        max_samples=cfg.data.train_samples,
+        filter_fn=DatasetFilters.tampered_with_masks
+    )
+    
+    val_ds = manager.get_split(
+        split_type=VALIDATION,
+        max_samples=cfg.data.val_samples,
+        filter_fn=DatasetFilters.tampered_with_masks
+    )
+    
+    train_loader = DataLoader(
+        SIDClassificationDataset(
+            train_ds,
+            image_size=cfg.data.image_size,
+            normalize_mean=cfg.model.normalize_mean,
+            normalize_std=cfg.model.normalize_std,
+            return_mask=True,
+        ),
+        batch_size=cfg.loader.batch_size,
+        shuffle=True,
+        num_workers=cfg.loader.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
 
-    val_loader = prepare_dataloader(val_ds, cfg, shuffle=False)
+    val_loader = DataLoader(
+        SIDClassificationDataset(
+            val_ds,
+            image_size=cfg.data.image_size,
+            normalize_mean=cfg.model.normalize_mean,
+            normalize_std=cfg.model.normalize_std,
+            return_mask=True,
+        ),
+        batch_size=cfg.loader.batch_size,
+        shuffle=False,
+        num_workers=cfg.loader.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = build_optimizer(model.parameters(), cfg.training)
     
     metrics_tracker = TrainingMetricsTracker()
+    scaler = GradScaler(device=cfg.training.device)  # For scaling gradients
 
     metrics_tracker.start_training()
     for epoch in range(cfg.training.epochs):
@@ -87,17 +117,23 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         steps = 0
 
         pbar = tqdm(train_loader, desc=f"Seg Epoch {epoch+1}/{cfg.training.epochs}")
-        for images, masks in pbar:
-            images = images.to(device)
-            masks = masks.to(device)
+        for batch in pbar:
+            images = batch["image"].to(device)
+            masks = batch["mask"].to(device)
 
             optimizer.zero_grad()
-            logits = model(images)
-            loss = criterion(logits, masks)
-            loss.backward()
-            optimizer.step()
+            with autocast(device_type=cfg.training.device):  # Enable mixed precision
+                logits = model(images)
+                loss = criterion(logits, masks)
+
+            scaler.scale(loss).backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Where should this go?
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item()
+
             train_dice += dice_coefficient(logits.detach(), masks).item()
             steps += 1
             pbar.set_postfix({"loss": f"{loss.item():.3f}"})
@@ -116,9 +152,9 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             val_steps = 0
 
             with torch.no_grad():
-                for images, masks in val_loader:
-                    images = images.to(device)
-                    masks = masks.to(device)
+                for batch in val_loader:
+                    images = batch["image"].to(device)
+                    masks = batch["mask"].to(device)
                     logits = model(images)
                     loss = criterion(logits, masks)
 
@@ -131,6 +167,9 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         else:
             avg_val_loss = float("nan")
             avg_val_dice = float("nan")
+            
+        latest_best_metrics = metrics_tracker.get_best_metric("val_dice")
+        prev_best_val = latest_best_metrics.additional_metrics.get("val_dice") if latest_best_metrics else float('-inf')
 
         metrics_tracker.add_metrics(TrainingMetrics(
             epoch=epoch,
@@ -145,23 +184,14 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
                 #"val_iou": avg_val_iou,
             }
         ))
-
  
-        logger.info(
-            f"Epoch {epoch+1}: val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
-        )
-
-        dice_to_use = avg_val_dice if not math.isnan(avg_val_dice) else avg_train_dice
-
-        best_entry = metrics_tracker.get_best_metric("val_dice")
-        best_val = (best_entry.additional_metrics["val_dice"]
-                    if best_entry and not math.isnan(best_entry.additional_metrics["val_dice"])
-                    else float('-inf'))
-
-        if dice_to_use > best_val:
+        if avg_val_dice > prev_best_val:
             TorchModelPersister().save_model(model, cfg.paths.model_path)
-            logger.info(f"Saved best segmentation model (dice={dice_to_use:.4f})")
-                        
+            logger.info(
+                f"Saved best segmentation model at epoch {epoch} "
+                f"(dice={avg_val_dice:.4f})"
+            )
+                            
 
     metrics_tracker.end_training()
     metrics_tracker.save_to_json(cfg.paths.history_path)
