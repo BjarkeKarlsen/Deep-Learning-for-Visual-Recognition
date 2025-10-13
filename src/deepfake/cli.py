@@ -52,7 +52,7 @@ def build_config_path(task: str, env: str) -> str:
 
 def run_train(cfg : Config, args):
     logger = SidLogger(name=f"{args.task}-train", log_dir=cfg.paths.log_path)
-    if args.task == cfg.Task.CLASSIFICATION:
+    if args.task == cfg.task.CLASSIFICATION:
         classify_train(logger, cfg)
     else:
         segment_train(logger, cfg)
@@ -60,15 +60,15 @@ def run_train(cfg : Config, args):
 
 def run_eval(cfg : Config, args):
     logger = SidLogger(name=f"{args.task}-eval", log_dir=cfg.paths.log_path)
-    if args.task == cfg.Task.CLASSIFICATION:
+    if args.task == cfg.task.CLASSIFICATION:
         classify_eval(logger, cfg)
-    elif args.task == cfg.Task.SEGMENTATION:
+    elif args.task == cfg.task.SEGMENTATION:
         segment_eval(logger, cfg)
 
 
 def run_plot(cfg: Config, args):
     run_root = cfg.paths.run_root
-    if args.task == cfg.Task.CLASSIFICATION:
+    if args.task == cfg.task.CLASSIFICATION:
         plots = ClassificationPlots(
             training_history_path=cfg.paths.history_path if args.stage=="train" else None,
             eval_history_path=   cfg.paths.metrics_path  if args.stage=="eval"  else None,

@@ -16,6 +16,7 @@ from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.segmentation_plots import SegmentationPlots
+from deepfake.utils.loss_factory import LossFactory
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """Measure overlap between predicted and ground-truth masks (Dice score)."""
@@ -74,9 +75,14 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     val_loader = prepare_dataloader(val_ds, cfg, shuffle=False)
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = build_optimizer(model.parameters(), cfg.training)
+    criterion = LossFactory.create_segmentation_loss(
+        types=cfg.loss.seg_types,
+        weights=cfg.loss.seg_weights,
+        global_kwargs=cfg.loss.seg_global_kwargs,
+        per_kwargs=cfg.loss.seg_per_kwargs
+    )
     
+    optimizer = build_optimizer(model.parameters(), cfg.training)
     metrics_tracker = TrainingMetricsTracker()
 
     metrics_tracker.start_training()

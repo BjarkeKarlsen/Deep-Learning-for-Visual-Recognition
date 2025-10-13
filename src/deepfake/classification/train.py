@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from deepfake.utils.loss_factory import LossFactory
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -59,11 +60,18 @@ def train(logger: SidLogger, cfg: Config):
     metrics_tracker = TrainingMetricsTracker()
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
+    criterion = LossFactory.create_classification_loss(
+        types=cfg.loss.cls_types,
+        weights=cfg.loss.cls_weights,
+        global_kwargs=cfg.loss.cls_global_kwargs,
+        per_kwargs=cfg.loss.cls_per_kwargs
+    )
     optimizer = build_optimizer(model.parameters(), cfg.training)
 
     best_val_acc = None
     best_epoch = None
+    
+    class_num = (list(cfg.model.class_names)).__len__()
     metrics_tracker.start_training()
     
     for epoch in range(cfg.training.epochs):
@@ -71,6 +79,7 @@ def train(logger: SidLogger, cfg: Config):
         train_loss = 0
         train_correct = 0
         train_total = 0
+        train_comp_sums = [0.0] * class_num
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.training.epochs}")
         for batch in pbar:
@@ -78,43 +87,56 @@ def train(logger: SidLogger, cfg: Config):
             labels = batch["label"].to(device)
 
             optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
+            output = model(images)
+            total_loss, comps = criterion(output, labels)
+            total_loss.backward()
             optimizer.step()
 
-            train_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
+            # Accumulate overall and per-component losses
+            train_loss += total_loss.item()
+            for i, c in enumerate(comps):
+                train_comp_sums[i] += c.item()
+
+            # Accuracy
+            _, preds = torch.max(output, 1)
             train_total += labels.size(0)
-            train_correct += (predicted == labels).sum().item()
-            pbar.set_postfix({'loss': f'{loss.item():.3f}'})
+            train_correct += (preds == labels).sum().item()
+
+            pbar.set_postfix(loss=f"{total_loss.item():.3f}")
 
         model.eval()
         val_loss = 0
         val_correct = 0
         val_total = 0
+        val_comp_sums = [0.0] * class_num
 
         with torch.no_grad():
             for batch in val_loader:
                 images = batch["image"].to(device)
                 labels = batch["label"].to(device)
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-                _, predicted = torch.max(outputs, 1)
-                val_total += labels.size(0)
-                val_correct += (predicted == labels).sum().item()
 
-        train_acc = train_correct / train_total if train_total else float('nan')
-        val_acc = val_correct / val_total if val_total else float('nan')
+                output = model(images)
+                total_val_loss, val_comps = criterion(output, labels)
+                val_loss += total_val_loss.item()
+                for i, c in enumerate(val_comps):
+                    val_comp_sums[i] += c.item()
+
+                _, preds = torch.max(output, 1)
+                val_total += labels.size(0)
+                val_correct += (preds == labels).sum().item()
+
         avg_train_loss = train_loss / len(train_loader)
-        avg_val_loss = (
-            val_loss / len(val_loader)
-            if len(val_loader) > 0
-            else float('nan')
-        )
+        avg_train_comps = [s / len(train_loader) for s in train_comp_sums]
+        train_acc = train_correct / train_total if train_total else float("nan")
+        avg_val_loss = val_loss / len(val_loader)
+        avg_val_comps = [s / len(val_loader) for s in val_comp_sums]
+        val_acc = val_correct / val_total if val_total else float("nan")
         
-   
+        additional = {}
+        for name, trc, vlc in zip(cfg.loss.cls_types, avg_train_comps, avg_val_comps):
+            additional[f"train_loss_{name}"] = trc
+            additional[f"val_loss_{name}"]   = vlc
+                
         metrics_tracker.add_metrics(TrainingMetrics(
             epoch=epoch,
             step=(epoch + 1) * len(train_loader),
@@ -123,6 +145,7 @@ def train(logger: SidLogger, cfg: Config):
             train_acc=train_acc,
             val_acc=val_acc,
             learning_rate=optimizer.param_groups[0]['lr'],
+            additional_metrics=additional
         ))
 
         logger.log_epoch_results(

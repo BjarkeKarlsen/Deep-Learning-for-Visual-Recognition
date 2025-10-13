@@ -41,6 +41,15 @@ training:
       - 0.9
       - 0.95
 
+loss:
+  cls_types: ["crossentropy", "focal"]
+  cls_weights: [1.0, 0.5]
+  cls_global_kwargs:
+    reduction: "mean"
+  cls_per_kwargs:
+    - {}
+    - {gamma: 2.0, alpha: 0.25}
+    
 paths:
   base: outputs
   task: classification

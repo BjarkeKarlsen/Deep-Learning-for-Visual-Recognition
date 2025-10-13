@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pathlib import Path
 
 
@@ -50,6 +50,26 @@ class TrainingConfig:
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     save_interval: int = 5  # Save a checkpoint every N epochs
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    
+@dataclass
+class LossConfig:
+    # Names of classification losses, e.g. ["crossentropy","focal"]
+    cls_types: List[str] = field(default_factory=lambda: ["crossentropy"])
+    # Corresponding weights
+    cls_weights: List[float] = field(default_factory=lambda: [1.0])
+    # Global kwargs applied to all classification losses
+    cls_global_kwargs: Dict = field(default_factory=dict)
+    # Per-loss overrides (list of dicts)
+    cls_per_kwargs: List[Dict] = field(default_factory=list)
+
+    # Names of segmentation losses, e.g. ["bce","dice"]
+    seg_types: List[str] = field(default_factory=lambda: ["bce"])
+    # Corresponding weights
+    seg_weights: List[float] = field(default_factory=lambda: [1.0])
+    # Global kwargs applied to all segmentation losses
+    seg_global_kwargs: Dict = field(default_factory=dict)
+    # Per-loss overrides (list of dicts)
+    seg_per_kwargs: List[Dict] = field(default_factory=list)
 
 @dataclass
 class PathsConfig:
@@ -114,4 +134,6 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
-    Task: TaskConfig = field(default_factory=TaskConfig)
+    task: TaskConfig = field(default_factory=TaskConfig)
+    loss: LossConfig = field(default_factory=LossConfig)
+
