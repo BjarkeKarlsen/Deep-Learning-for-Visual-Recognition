@@ -90,7 +90,7 @@ class SIDClassificationDataset(Dataset):
 
         outputs = {"image": image}
         
-         # Mask
+        # Handle mask processing if return_mask is enabled
         mask_tensor: torch.Tensor = None
         if self.return_mask:
             raw_mask = example.get("mask")
