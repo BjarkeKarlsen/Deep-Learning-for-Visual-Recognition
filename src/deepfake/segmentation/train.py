@@ -12,7 +12,6 @@ from torch.amp import autocast, GradScaler
 
 from deepfake.config import Config
 from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.segmentation.dataset import TamperedSegmentationDataset
 from deepfake.data.dataset_manager import DatasetFilters, SIDDatasetManager, TRAIN, VALIDATION
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.data.dataset import SIDClassificationDataset

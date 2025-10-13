@@ -1,20 +1,22 @@
-from dataclasses import asdict
-from deepfake.utils.model_manager import check_model_exists
-from deepfake.utils.model_persister import TorchModelPersister
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets import DownloadMode
+from dataclasses import asdict
 
 from deepfake.config import Config
+from deepfake.utils.optimizer_factory import build_optimizer
+from deepfake.utils.model_manager import check_model_exists
+from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.data.dataset_manager import SIDDatasetManager, TRAIN, VALIDATION
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.classification_plots import ClassificationPlots
-from .dataset import SIDClassificationDataset
+from deepfake.data.dataset import SIDClassificationDataset
 from .model import BaselineClassifier
 
 
@@ -82,7 +84,6 @@ def train(logger: SidLogger, cfg: Config):
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
     if check_model_exists(cfg.paths.model_path):
         loader = TorchModelPersister()
         loader.load_model(model, cfg.paths.model_path)
