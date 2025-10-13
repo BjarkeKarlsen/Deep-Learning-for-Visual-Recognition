@@ -43,23 +43,6 @@ class SIDClassificationDataset(Dataset):
         self.max_samples = max_samples 
         self.return_mask = return_mask
         self.return_label = return_label
-        self.is_streaming = isinstance(dataset, (HFIterableDataset, IterableDataset))
-        
-        if self.is_streaming:
-            print(f"Converting streaming dataset to Dataset object...")
-            
-            # Take the samples we need and convert to Dataset
-            samples = []
-            for i, sample in enumerate(dataset):
-                if max_samples and i >= max_samples:
-                    break
-                samples.append(sample)
-            
-            # Create a proper HF Dataset object from the samples
-            self.dataset = HFDataset.from_list(samples)
-            self.is_streaming = False
-            print(f"Converted {len(samples)} samples to Dataset object")
-
 
         # Default to the segmentation-style preprocessing so outputs stay aligned across tasks.
         if transform is None:

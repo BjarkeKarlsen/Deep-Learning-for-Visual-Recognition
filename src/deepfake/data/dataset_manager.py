@@ -40,8 +40,10 @@ class SIDDatasetManager:
           - derive from 'validation' if val_offset > 0
           - derive from 'train' if val_offset == 0 and test_offset >= 0
         """
-        load_n = max_samples * 4 if (filter_fn and max_samples) else max_samples
+        # If filtering, load extra samples to account for filtering since 1 to 3 ratio use for times the amount
+        load_n = max_samples * 4 if filter_fn else max_samples
         
+        # 1. Load raw split (streaming or non-streaming)
         if split_type == TRAIN:
             ds = self._load_split(TRAIN, max_samples=load_n)
         elif split_type == VALIDATION:
@@ -55,20 +57,32 @@ class SIDDatasetManager:
             )
         else:
             raise ValueError(f"Unknown split type: {split_type}")
-
-        # If no filtering, or no limit, return as is
-        if filter_fn is None or max_samples is None:
+        
+        # 2. If streaming, collect up to max_samples into a real Dataset
+        if self.use_streaming:
+            ds = ds.take(load_n)
+            ds = Dataset.from_list(list(ds))
+            print(f"Converted streaming to HF Dataset with {len(ds)} samples")
+        
+        # 3. If no filter or limit, return now
+        if filter_fn is None and max_samples is None:
             return ds
 
-        # Apply filtering if provided
-        if filter_fn is not None:
+        # 4. Apply filter first
+        if filter_fn:
             ds = self._filter_dataset(
                 dataset=ds,
                 split_type=split_type,
                 filter_fn=filter_fn
-            ).take(max_samples)
+            )    
             print(f"After filtering, {split_type} dataset size: {len(ds)}")
             
+
+        # 5. Apply max_samples slice
+        if max_samples is not None:
+            ds = ds.select(range(min(max_samples, len(ds))))
+            print(f"After slicing top {max_samples}, {split_type} size: {len(ds)}")
+
         return ds
 
     def _load_split(
@@ -96,8 +110,6 @@ class SIDDatasetManager:
                 cache_dir=self.cache_dir,
                 download_mode=self.download_mode,
             )
-            if max_samples is not None:
-                ds = ds.take(max_samples)
         return ds
 
     def _get_test_split(
