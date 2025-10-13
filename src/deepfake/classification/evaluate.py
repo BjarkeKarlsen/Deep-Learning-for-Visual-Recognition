@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import os
 from dataclasses import asdict
+from datasets import DownloadMode
 
 from tqdm import tqdm
 from sklearn.metrics import classification_report, confusion_matrix
@@ -11,11 +12,11 @@ from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.utils.evaluation_metrics_tracker import ClassificationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.config import Config
-from deepfake.data.dataset_manager import SIDDatasetManager
+from deepfake.data.dataset_manager import TEST, SIDDatasetManager
 from deepfake.utils.model_manager import check_model_exists
 from deepfake.utils.logger import SidLogger
 
-from .dataset import SIDClassificationDataset
+from ..data.dataset import SIDClassificationDataset
 from .model import BaselineClassifier
 
 
@@ -27,17 +28,18 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     check_model_exists(cfg.paths.model_path)
 
-    with SIDDatasetManager(
+    manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
-        use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    ) as manager:
-        _, _, test_ds = manager.get_splits(
-            train_max=0,
-            val_max=0,
-            test_max=cfg.data.test_samples,
-            test_offset=cfg.data.val_samples,
-        )
+        download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
+    )
+    
+    test_ds = manager.get_split(
+            split_type=TEST,
+            max_samples=cfg.data.test_samples,
+            use_test_or_val_as_test_set=True,
+            val_offset=cfg.data.val_samples,
+    )
 
     test_loader = DataLoader(
         SIDClassificationDataset(
@@ -106,7 +108,7 @@ def evaluate(logger: SidLogger, cfg: Config):
         output_directory=cfg.paths.run_root
     )
     
-    classification_plotter.plot_confusion_matrix(save_path=cfg.paths.run_root)
-    classification_plotter.plot_classification_report(save_path=cfg.paths.run_root)
+    classification_plotter.plot_confusion_matrix()
+    classification_plotter.plot_classification_report()
 
     logger.info("Evaluation complete.")
