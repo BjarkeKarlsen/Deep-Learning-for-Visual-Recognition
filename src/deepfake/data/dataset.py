@@ -106,7 +106,6 @@ class SIDClassificationDataset(Dataset):
             )
             
             outputs.update({"mask": mask_tensor})
-         
         # Label
         if self.return_label:
             label = example.get("label")
