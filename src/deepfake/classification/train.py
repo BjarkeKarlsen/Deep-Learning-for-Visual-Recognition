@@ -21,12 +21,18 @@ def train(logger: SidLogger, cfg: Config):
 
     logger.log_training_config(asdict(cfg))
 
-    with SIDDatasetManager(
+    manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
-        use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    ) as manager:
-        train_ds, val_ds, _ = manager.get_splits(
+    )
+    
+    
+# For streaming, shuffle via the HF API, not DataLoader:
+    if cfg.data.use_streaming:
+        # buffer_size can be your train_samples or a smaller window
+        train_ds = train_ds.shuffle(buffer_size=cfg.data.train_samples, seed=cfg.training.seed)
+
+    train_ds, val_ds, _ = manager.get_splits(
             train_max=cfg.data.train_samples,
             val_max=cfg.data.val_samples,
             test_max=0,
@@ -40,7 +46,7 @@ def train(logger: SidLogger, cfg: Config):
             normalize_std=cfg.model.normalize_std,
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_train,
+        shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
         num_workers=cfg.loader.num_workers,
     )
 
