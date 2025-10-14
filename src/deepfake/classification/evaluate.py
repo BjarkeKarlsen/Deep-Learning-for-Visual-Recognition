@@ -47,6 +47,7 @@ def evaluate(logger: SidLogger, cfg: Config):
             image_size=cfg.data.image_size,
             normalize_mean=cfg.model.normalize_mean,
             normalize_std=cfg.model.normalize_std,
+            return_label=True,
         ),
         batch_size=cfg.loader.batch_size,
         shuffle=cfg.loader.shuffle_test,
@@ -66,13 +67,14 @@ def evaluate(logger: SidLogger, cfg: Config):
     logger.info("Starting evaluation...")
     with logger.time_block("model inference"):
         with torch.no_grad():
-            for batch_idx, batch in enumerate(tqdm(test_loader, desc="Evaluating")):
+            pbar = tqdm(test_loader, desc="Seg Eval")
+            for batch in pbar:
                 images = batch["image"].to(device)
-                labels = batch["label"]
+                labels = batch["label"].to(device)
                 outputs = model(images)
                 _, predicted = torch.max(outputs, 1)
                 all_preds.extend(predicted.cpu().numpy())
-                all_labels.extend(labels.numpy())
+                all_labels.extend(labels.cpu().numpy())
 
     accuracy = 100 * np.mean(np.array(all_preds) == np.array(all_labels))
     logger.info(f"Overall Accuracy: {accuracy:.2f}%")
