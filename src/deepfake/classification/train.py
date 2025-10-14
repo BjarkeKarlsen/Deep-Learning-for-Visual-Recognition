@@ -13,7 +13,6 @@ from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.data.dataset_manager import SIDDatasetManager, TRAIN, VALIDATION
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.model_persister import TorchModelPersister
-from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.data.dataset import SIDClassificationDataset
@@ -48,10 +47,6 @@ def train(logger: SidLogger, cfg: Config):
         max_samples=cfg.data.val_samples,
     )
     
-    # For streaming, shuffle via the HF API, not DataLoader:
-    if cfg.data.use_streaming:
-        # buffer_size can be your train_samples or a smaller window
-        train_ds = train_ds.shuffle(buffer_size=cfg.data.train_samples, seed=cfg.training.seed)
 
     train_loader = DataLoader(
         SIDClassificationDataset(
@@ -77,8 +72,8 @@ def train(logger: SidLogger, cfg: Config):
             return_label=True,
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_val,
-        num_workers=cfg.loader.num_workers,
+        shuffle=False,
+        num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0,
     )
 
 
@@ -92,7 +87,7 @@ def train(logger: SidLogger, cfg: Config):
     best_val_acc = None
     best_epoch = None
     metrics_tracker.start_training()
-    
+    # Def train loop
     for epoch in range(cfg.training.epochs):
         model.train()
         train_loss = 0
@@ -115,7 +110,8 @@ def train(logger: SidLogger, cfg: Config):
             train_total += labels.size(0)
             train_correct += (predicted == labels).sum().item()
             pbar.set_postfix({'loss': f'{loss.item():.3f}'})
-
+        
+        # def val loop
         model.eval()
         val_loss = 0
         val_correct = 0

@@ -5,7 +5,7 @@ data:
   val_samples: 2
   test_samples: 2
   use_streaming: true
-  use_disk_cache: false
+  use_disk_cache: true
 
 loader:
   batch_size: 2

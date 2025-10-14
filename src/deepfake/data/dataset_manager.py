@@ -31,7 +31,7 @@ class SIDDatasetManager:
         max_samples: Optional[int] = None,
         use_test_or_val_as_test_set: bool = False,
         val_offset: int = 0,
-        test_offset: int = 0,
+        train_offset: int = 0,
         filter_fn: Optional[Callable] = None,
     ) -> Dataset:
         """
@@ -53,7 +53,7 @@ class SIDDatasetManager:
                 max_samples=load_n,
                 use_test_or_val_as_test_set=use_test_or_val_as_test_set,
                 val_offset=val_offset,
-                test_offset=test_offset,
+                train_offset=train_offset,
             )
         else:
             raise ValueError(f"Unknown split type: {split_type}")
@@ -117,7 +117,7 @@ class SIDDatasetManager:
         max_samples: Optional[int] = None,
         use_test_or_val_as_test_set: bool = False,
         val_offset: int = 0,
-        test_offset: int = 0,
+        train_offset: int = 0,
     ) -> Dataset:
         """Derive test from val (if val_offset > 0) or from train (if val_offset == 0)."""
         # Try real test split
@@ -132,7 +132,7 @@ class SIDDatasetManager:
             if self.use_streaming:
                 val_ds = self._load_split(VALIDATION, max_samples=None)
                 total = len(val_ds)
-                start_idx = max(0, total - val_offset + test_offset)
+                start_idx = max(0, total - val_offset + train_offset)
                 derived = val_ds.skip(start_idx)
                 if max_samples is not None:
                     derived = derived.take(max_samples)
@@ -146,16 +146,19 @@ class SIDDatasetManager:
                     download_mode=self.download_mode,
                 )
                 total = len(full_val)
-                start = max(0, total - val_offset + test_offset)
-                end = min(start + (max_samples or (total - start)), total)
+                start = min(val_offset, total)  # Start from val_offset
+                if max_samples is not None:
+                    end = min(start + max_samples, total)  # Take max_samples after offset
+                else:
+                    end = total
                 return full_val.select(range(start, end))
 
         # Case 2: Derive from train (if val_offset == 0)
-        if val_offset == 0 and test_offset >= 0:
+        if val_offset == 0 and train_offset >= 0:
             if self.use_streaming:
                 train_ds = self._load_split(TRAIN, max_samples=None)
                 total = len(train_ds)
-                start_idx = max(0, total - test_offset)
+                start_idx = max(0, total - train_offset)
                 derived = train_ds.skip(start_idx)
                 if max_samples is not None:
                     derived = derived.take(max_samples)
@@ -169,8 +172,11 @@ class SIDDatasetManager:
                     download_mode=self.download_mode,
                 )
                 total = len(full_train)
-                start = max(0, total - test_offset)
-                end = min(start + (max_samples or (total - start)), total)
+                start = min(train_offset, total)  # Start from train_offset
+                if max_samples is not None:
+                    end = min(start + max_samples, total)  # Take max_samples after offset
+                else:
+                    end = total
                 return full_train.select(range(start, end))
 
         raise ValueError("Invalid configuration: cannot derive test split.")
