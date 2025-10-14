@@ -1,5 +1,9 @@
 import json
 import numpy as np
+import matplotlib
+
+# Force a non-interactive backend early so matplotlib never spins up GUI helper threads.
+matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -11,6 +15,7 @@ class CommonPlots:
 
     def __init__(self, output_dir: Optional[Union[str, Path]] = None):
         self.output_dir = Path(output_dir) if output_dir else Path("results")
+        plt.ioff()
         self._create_save_path(self.output_dir)
         self._setup_plot_style()
 
