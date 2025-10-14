@@ -99,13 +99,13 @@ Once you’ve installed the package (e.g. via `pip install -e .`), the `deepfake
 Train a model
 
 ```bash
-deepfake-cli train --task <classification|segmentation> [--env <dev|test>]
+deepfake-cli train   --task <classification|segmentation>   --env <dev|test>  [--checkpoint<epoch_number>]
 ```
 
 Example (classification in dev):
 
 ```bash
-deepfake-cli train --task classification --env dev
+deepfake-cli train --task classification --env dev --checkpoint 9
 ```
 
 Example (segmentation in test):

@@ -2,10 +2,14 @@
 """Command-line entry point for the Deepfake detection pipelines."""
 
 import argparse
+import os
+import uuid
+from deepfake.utils.checkpoint_manager import CheckpointManager
 import torch.multiprocessing as mp
-from deepfake.classification import train as classify_train, evaluate as classify_eval
-from deepfake.segmentation    import train as segment_train, evaluate as segment_eval
+from deepfake.classification import ClassificationTrainer, ClassificationEvaluator
+from deepfake.segmentation import SegmentationTrainer, SegmentationEvaluator
 from deepfake.visualization.classification_plots import ClassificationPlots
+from deepfake.utils.training_metrics_tracker import TrainingMetricsTracker
 from deepfake.visualization.segmentation_plots    import SegmentationPlots
 from deepfake.utils.seed_manager import SeedManager
 from deepfake.utils.logger       import SidLogger
@@ -14,6 +18,7 @@ from deepfake.config import Config
 
 
 def make_parser():
+    """CREATE ARGUMENT PARSER AND DEFINE SUBCOMMANDS."""
     parser = argparse.ArgumentParser(
         prog="deepfake",
         description="Deepfake Detection Toolkit",
@@ -22,9 +27,12 @@ def make_parser():
 
     # Shared options
     def add_common_args(p):
+        """ADD COMMON TASK/ENV/ID/CHECKPOINT ARGS TO SUBPARSER."""
         p.add_argument("--task",   choices=["classification","segmentation"], required=True)
         p.add_argument("--env",    choices=["dev","test"], default="dev")
         p.add_argument("--runid",  type=str, help="Run ID (for eval/plot)")
+        p.add_argument("--checkpoint", type=int,
+                       help="Epoch number to resume training from checkpoint")
 
     # train subcommand
     train_p = subparsers.add_parser("train", help="Train a pipeline")
@@ -47,26 +55,58 @@ def make_parser():
     return parser
 
 def build_config_path(task: str, env: str) -> str:
+    """DETERMINE CONFIG FILE PATH BASED ON TASK AND ENV."""
     prefix = f"{env}-" if env == "dev" else ""
     return f"configs/{prefix}{task}.yaml"
 
-def run_train(cfg : Config, args):
+def run_train(cfg: Config, args):
+    """SET UP LOGGER, METRICS, CHECKPOINT MANAGER, AND DISPATCH TRAINER."""
     logger = SidLogger(name=f"{args.task}-train", log_dir=cfg.paths.log_path)
-    if args.task == cfg.Task.CLASSIFICATION:
-        classify_train(logger, cfg)
-    else:
-        segment_train(logger, cfg)
+    metrics_tracker = TrainingMetricsTracker(logger=logger.logger)
+    metrics_tracker.configure_backup(cfg.paths.history_path)
+    checkpoint_mgr = CheckpointManager(
+        checkpoint_dir=cfg.paths.checkpoints_path,
+        logger=logger.logger,
+        backup_frequency=cfg.training.checkpoint_frequency,
+        keep_checkpoints=cfg.training.keep_checkpoints,
+    )
 
+    # determine start_epoch
+    start_epoch = 0
+    if args.checkpoint is not None:
+        info = checkpoint_mgr.create_training_resume_info(args.checkpoint)
+        start_epoch = info["next_epoch"]
+        logger.info(f"Resuming {cfg.paths.run_id} from checkpoint epoch {args.checkpoint}")
+    elif os.path.isfile(cfg.paths.history_path):
+        metrics_tracker.load_from_json(cfg.paths.history_path)
+        logger.info(f"Loaded history for run {cfg.paths.run_id}")
+
+    if args.task == cfg.Task.CLASSIFICATION:
+        ClassificationTrainer(
+            cfg=cfg,
+            logger=logger,
+            metrics_tracker=metrics_tracker,
+            checkpoint_mgr=checkpoint_mgr,
+        ).train(start_epoch=start_epoch)
+    else:
+        SegmentationTrainer(
+            cfg=cfg,
+            logger=logger,
+            metrics_tracker=metrics_tracker,
+            checkpoint_mgr=checkpoint_mgr,
+        ).train(start_epoch=start_epoch)
 
 def run_eval(cfg : Config, args):
+    """DISPATCH EVALUATION BASED ON TASK."""
     logger = SidLogger(name=f"{args.task}-eval", log_dir=cfg.paths.log_path)
     if args.task == cfg.Task.CLASSIFICATION:
-        classify_eval(logger, cfg)
+        ClassificationEvaluator(cfg, logger).run()
     elif args.task == cfg.Task.SEGMENTATION:
-        segment_eval(logger, cfg)
+        SegmentationEvaluator(cfg, logger).run()
 
 
 def run_plot(cfg: Config, args):
+    """DISPATCH PLOTTING BASED ON TASK AND STAGE."""
     run_root = cfg.paths.run_root
     if args.task == cfg.Task.CLASSIFICATION:
         plots = ClassificationPlots(
@@ -100,7 +140,7 @@ def main():
     # Load config
     cfg_path = build_config_path(args.task, args.env)
     cfg : Config = ConfigLoader(config_path=cfg_path).get_config()
-
+    
     # To Override run_id from command line, so we can evaluate a model
     if args.runid:
         # Remove the new directory created by default
@@ -121,8 +161,10 @@ def main():
 
 
 def entrypoint():
+    """ENSURE MULTIPROCESSING USES SPAWN AND LAUNCH MAIN."""
     if mp.get_start_method(allow_none=True) != "spawn":
         mp.set_start_method("spawn", force=True)
+        
     main()
 
 

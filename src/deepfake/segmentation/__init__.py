@@ -1,6 +1,6 @@
 """Segmentation pipeline modules."""
 
-from .train import train
-from .evaluate import evaluate
+from .train import Trainer as SegmentationTrainer
+from .evaluate import Evaluator as SegmentationEvaluator
 
 __all__ = ["train", "evaluate"]

@@ -1,6 +1,7 @@
+import os
 import math
 from dataclasses import asdict
-from typing import Dict
+from typing import Dict, Any
 
 import torch
 import torch.nn as nn
@@ -9,196 +10,216 @@ from tqdm import tqdm
 from datasets import DownloadMode
 from torch.amp import autocast, GradScaler
 
-
 from deepfake.config import Config
+from deepfake.utils.checkpoint_manager import CheckpointManager
 from deepfake.data.dataset_manager import DatasetFilters, SIDDatasetManager, TRAIN, VALIDATION
-from deepfake.utils.model_persister import TorchModelPersister
+from deepfake.utils.model_persister import TorchModelPersister, IModelPersister
 from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
+from deepfake.utils.optimizer_factory import OptimizerFactory
 from deepfake.utils.logger import SidLogger
-from deepfake.utils.model_persister import TorchModelPersister
-from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.segmentation_plots import SegmentationPlots
+from .dice_coefficient import dice_coefficient
 
-def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+class Trainer:
     """
-    Computes the Dice Coefficient over a batch:
-      Inputs:
-        logits:  Tensor of shape (N,1,H,W)
-        targets: Tensor of shape (N,1,H,W)
-    Returns:
-        single scalar Dice score across all N×H×W pixels
+    Class-based trainer for tamper segmentation with mixed precision,
+    metrics tracking, checkpointing, and plotting.
     """
-    # 1. Convert logits → probabilities
-    probs = torch.sigmoid(logits)
-    # 2. Binarize predictions and targets
-    preds = (probs > 0.5).float()
-    targs = (targets > 0.5).float()
 
-    # 3. Flatten batch and spatial dims → (N*H*W)
-    preds_flat = preds.view(-1)
-    targs_flat = targs.view(-1)
+    def __init__(
+        self,
+        cfg: Config,
+        logger: SidLogger,
+        metrics_tracker: TrainingMetricsTracker,
+        checkpoint_mgr: CheckpointManager,
+        persister: IModelPersister = None
+    ):
+        self.cfg = cfg
+        self.logger = logger
+        self.device = torch.device(cfg.training.device)
 
-    # 4. Compute intersection and union
-    intersection = (preds_flat * targs_flat).sum()
-    union = preds_flat.sum() + targs_flat.sum()
+        # Model, loss, optimizer, scaler
+        self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
+        self.criterion = nn.BCEWithLogitsLoss()
+        self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
+        self.scaler = GradScaler()
 
-    # 5. Dice Coefficient
-    dice = (2.0 * intersection + eps) / (union + eps)
-    return dice
+        # Persister, metrics, checkpoint
+        self.persister = persister or TorchModelPersister()
+        self.metrics_tracker = metrics_tracker
+        self.checkpoint_mgr = checkpoint_mgr
 
-def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
-    """Optimise the U-Net on tampered examples and log training history."""
-    device = torch.device(cfg.training.device)
-    logger.log_training_config(asdict(cfg))
+        logger.log_training_config(asdict(cfg))
 
-    manager = SIDDatasetManager(
-        dataset_name=cfg.data.dataset_name,
-        use_streaming=cfg.data.use_streaming,
-        download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
-    )
+    def train(self, start_epoch: int = 0):
+        train_loader, val_loader = self._load_data()
+        # Determine previous best before recording current metrics
+        prev_best = self.metrics_tracker.get_best_metric("val_dice")
+        prev_best_val = prev_best.additional_metrics.get("val_dice") if prev_best and prev_best.additional_metrics.get("val_dice") is not None else float('-inf')
 
-    train_ds = manager.get_split(
-        split_type=TRAIN,
-        max_samples=cfg.data.train_samples,
-        filter_fn=DatasetFilters.tampered_with_masks
-    )
-    
-    val_ds = manager.get_split(
-        split_type=VALIDATION,
-        max_samples=cfg.data.val_samples,
-        filter_fn=DatasetFilters.tampered_with_masks
-    )
-    
-    train_loader = DataLoader(
-        SIDClassificationDataset(
-            train_ds,
-            image_size=cfg.data.image_size,
-            normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std,
-            return_mask=True,
-        ),
-        batch_size=cfg.loader.batch_size,
-        shuffle=True if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
-        num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0, # Multiprocessing with streaming datasets is not supported
-        pin_memory=torch.cuda.is_available(),
-    )
+        # LOAD THE DATA
+        train_loader, val_loader = self._load_data()
 
-    val_loader = DataLoader(
-        SIDClassificationDataset(
-            val_ds,
-            image_size=cfg.data.image_size,
-            normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std,
-            return_mask=True,
-        ),
-        batch_size=cfg.loader.batch_size,
-        shuffle=False,
-        num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0,
-        pin_memory=torch.cuda.is_available(),
-    )
+        # START TRAINING
+        self.metrics_tracker.start_training()
+
+        for epoch in range(start_epoch, self.cfg.training.epochs):
+            # TRAIN & EVAL
+            avg_train_loss, avg_train_dice = self._train_epoch(train_loader, epoch)
+            avg_val_loss, avg_val_dice = self._evaluation(val_loader)
+
+            # RECORD METRICS
+            self.metrics_tracker.add_metrics(TrainingMetrics(
+                epoch=epoch + 1,
+                step=(epoch + 1) * len(train_loader),
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                learning_rate=self.optimizer.param_groups[0]["lr"],
+                additional_metrics={
+                    "train_dice": avg_train_dice,
+                    "val_dice": avg_val_dice,
+                }
+            ))
+            
+            # LOGGING EPOCH
+            self.logger.info(
+                f"Epoch {epoch+1}: "
+                f"train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}, "
+                f"val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
+            )
+            
+            # SAVE BEST MODEL IF IMPROVED
+            if avg_val_dice > prev_best_val:
+                self.persister.save_model(self.model, self.cfg.paths.model_path)
+                self.logger.info(f"Saved best model at epoch {epoch+1} (dice={avg_val_dice:.4f})")
 
 
-    model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = build_optimizer(model.parameters(), cfg.training)
-    
-    metrics_tracker = TrainingMetricsTracker()
-    scaler = GradScaler(device=cfg.training.device)  # For scaling gradients
+            # CHECKPOINT
+            self.checkpoint_mgr.create_checkpoint(
+                epoch=epoch + 1,
+                model=self.model,
+                optimizer=self.optimizer,
+                metrics_tracker=self.metrics_tracker,
+                config=self.cfg,
+            )
 
-    metrics_tracker.start_training()
-    for epoch in range(cfg.training.epochs):
-        model.train()
-        train_loss = 0.0
-        train_dice = 0.0
-        steps = 0
+        # Finish
+        self.metrics_tracker.end_training()
+        self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
+            
+        self.logger.log_training_complete(
+            total_time=self.metrics_tracker.get_summary_stats().get('duration_minutes'),
+            best_metric=self.metrics_tracker.get_best_metric("val_dice").additional_metrics.get("val_dice"),
+            best_epoch=self.metrics_tracker.get_best_metric("val_dice").epoch,
+        )
+        
+        # PLOT
+        plotter = SegmentationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
+        plotter.plot_training_history()
+        plotter.plot_learning_rate_schedule()
 
-        pbar = tqdm(train_loader, desc=f"Seg Epoch {epoch+1}/{cfg.training.epochs}")
+            
+    def _train_epoch(self, train_loader: DataLoader, epoch: int):
+        self.model.train()
+        train_loss, train_dice, steps = 0.0, 0.0, 0
+        
+        # ITERATE OVER BATCHES WITH A PROGRESS BAR
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}")
         for batch in pbar:
-            images = batch["image"].to(device)
-            masks = batch["mask"].to(device)
-
-            optimizer.zero_grad()
-            with autocast(device_type=cfg.training.device):  # Enable mixed precision
-                logits = model(images)
-                loss = criterion(logits, masks)
-
-            scaler.scale(loss).backward()
-
-            # Gradient clipping is applied after backward() and before optimizer step when using mixed precision.
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            scaler.step(optimizer)
-            scaler.update()
-
+            images = batch["image"].to(self.device)
+            masks = batch["mask"].to(self.device)
+            
+            # ZERO GRADIENTS BEFORE BACKWARD PASS
+            self.optimizer.zero_grad()
+            
+            # ENABLE MIXED PRECISION FOR FASTER FORWARD AND REDUCED MEMORY
+            with autocast(device_type=self.device.type):
+                logits = self.model(images)
+                loss = self.criterion(logits, masks)
+            
+            # SCALE LOSS AND BACKWARD FOR STABLE MIXED-PRECISION TRAINING    
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            
+            # UPDATE TRAINING METRICS
             train_loss += loss.item()
-
-            train_dice += dice_coefficient(logits.detach(), masks).item()
+            train_dice += dice_coefficient(logits, masks).item()
+            
             steps += 1
-            pbar.set_postfix({"loss": f"{loss.item():.3f}"})
-
+            # UPDATE PROGRESS BAR WITH CURRENT LOSS
+            pbar.set_postfix({'loss': f'{loss.item():.3f}', 'dice': f'{train_dice:.3f}'})
+        
+        # CALCULATE AVERAGE METRICS    
         avg_train_loss = train_loss / max(steps, 1)
         avg_train_dice = train_dice / max(steps, 1)
+        
+        return avg_train_loss, avg_train_dice
 
-        logger.info(
-            f"Epoch {epoch+1}: train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}"
+    @torch.no_grad() # Optimize memory usage and speed up computations
+    def _evaluation(self, val_loader: DataLoader):
+        
+        self.model.eval()
+        val_loss, val_dice = 0.0, 0.0
+        
+        with torch.no_grad():
+            for batch in val_loader:
+                images = batch["image"].to(self.device)
+                masks = batch["mask"].to(self.device)
+                
+                # FORWARD PASS THROUGH SEGMENTATION MODEL
+                logits = self.model(images)
+                loss = self.criterion(logits, masks)
+                
+                # ACCUMULATE LOSS AND DICE SCORE
+                val_loss += loss.item()
+                val_dice += dice_coefficient(logits, masks).item()
+        
+        # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
+        avg_val_loss = val_loss / len(val_loader)
+        avg_val_dice = val_dice / len(val_loader)
+        
+        return avg_val_loss, avg_val_dice
+    
+    def _load_data(self):
+        manager = SIDDatasetManager(
+            dataset_name=self.cfg.data.dataset_name,
+            use_streaming=self.cfg.data.use_streaming,
+            download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
         )
-
-        if val_loader is not None:
-            model.eval()
-            val_loss = 0.0
-            val_dice = 0.0
-            val_steps = 0
-
-            with torch.no_grad():
-                for batch in val_loader:
-                    images = batch["image"].to(device)
-                    masks = batch["mask"].to(device)
-                    logits = model(images)
-                    loss = criterion(logits, masks)
-
-                    val_loss += loss.item()
-                    val_dice += dice_coefficient(logits, masks).item()
-                    val_steps += 1
-
-            avg_val_loss = val_loss / max(val_steps, 1)
-            avg_val_dice = val_dice / max(val_steps, 1)
-        else:
-            avg_val_loss = float("nan")
-            avg_val_dice = float("nan")
+        train_ds = manager.get_split(
+            split_type=TRAIN,
+            max_samples=self.cfg.data.train_samples,
+            filter_fn=DatasetFilters.tampered_with_masks
+        )
+        val_ds = manager.get_split(
+            split_type=VALIDATION,
+            max_samples=self.cfg.data.val_samples,
+            filter_fn=DatasetFilters.tampered_with_masks
+        )
+        train_loader = DataLoader(
+            SIDClassificationDataset(train_ds, image_size=self.cfg.data.image_size,
+                                     normalize_mean=self.cfg.model.normalize_mean,
+                                     normalize_std=self.cfg.model.normalize_std,
+                                     return_mask=True),
+            batch_size=self.cfg.loader.batch_size,
+            shuffle=not self.cfg.data.use_streaming and self.cfg.loader.shuffle_train,
+            num_workers=0 if self.cfg.data.use_streaming else self.cfg.loader.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
+        val_loader = DataLoader(
+            SIDClassificationDataset(val_ds, image_size=self.cfg.data.image_size,
+                                     normalize_mean=self.cfg.model.normalize_mean,
+                                     normalize_std=self.cfg.model.normalize_std,
+                                     return_mask=True),
+            batch_size=self.cfg.loader.batch_size,
+            shuffle=False,
+            num_workers=0 if self.cfg.data.use_streaming else self.cfg.loader.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
+        return train_loader, val_loader
             
-        latest_best_metrics = metrics_tracker.get_best_metric("val_dice")
-        prev_best_val = latest_best_metrics.additional_metrics.get("val_dice") if latest_best_metrics else float('-inf')
-
-        metrics_tracker.add_metrics(TrainingMetrics(
-            epoch=epoch,
-            step=steps,  # or global_step
-            train_loss=avg_train_loss,
-            val_loss=avg_val_loss,
-            learning_rate=optimizer.param_groups[0]['lr'],
-            additional_metrics={
-                "train_dice": avg_train_dice,
-                "val_dice": avg_val_dice,
-                #"train_iou": avg_train_iou,
-                #"val_iou": avg_val_iou,
-            }
-        ))
- 
-        if avg_val_dice > prev_best_val:
-            TorchModelPersister().save_model(model, cfg.paths.model_path)
-            logger.info(
-                f"Saved best segmentation model at epoch {epoch} "
-                f"(dice={avg_val_dice:.4f})"
-            )
-                            
-
-    metrics_tracker.end_training()
-    metrics_tracker.save_to_json(cfg.paths.history_path)
-
-    summary = metrics_tracker.get_summary_stats()
-    logger.log_list_of_dicts(f"Training Summary", summary)
-
-    plotter = SegmentationPlots(output_directory=cfg.paths.run_root, training_history_path=cfg.paths.history_path)
-
-    plotter.plot_training_history()
-    plotter.plot_learning_rate_schedule()
+        
+        
