@@ -148,7 +148,7 @@ class TrainingMetricsTracker(IMetricsTracker):
                 self.metrics.append(metrics)
                 self._update_best_metrics(metrics)
                 
-                self.logger.debug(
+                self.logger.info(
                     f"Added metrics for epoch {metrics.epoch}, step {metrics.step}"
                 )
                 
@@ -165,7 +165,7 @@ class TrainingMetricsTracker(IMetricsTracker):
             if ('val_loss' not in self.best_metrics or 
                 metrics.val_loss < self.best_metrics['val_loss'].val_loss):
                 self.best_metrics['val_loss'] = metrics
-                self.logger.debug(f"New best validation loss: {metrics.val_loss}")
+                self.logger.info(f"New best validation loss: {metrics.val_loss}")
         
         # Update training loss (lower is better)
         if (metrics.train_loss is not None and 
@@ -173,7 +173,7 @@ class TrainingMetricsTracker(IMetricsTracker):
             if ('train_loss' not in self.best_metrics or 
                 metrics.train_loss < self.best_metrics['train_loss'].train_loss):
                 self.best_metrics['train_loss'] = metrics
-                self.logger.debug(f"New best training loss: {metrics.train_loss}")
+                self.logger.info(f"New best training loss: {metrics.train_loss}")
         
         # Update validation accuracy (higher is better)
         if (metrics.val_acc is not None and 
@@ -181,7 +181,7 @@ class TrainingMetricsTracker(IMetricsTracker):
             if ('val_acc' not in self.best_metrics or 
                 metrics.val_acc > self.best_metrics['val_acc'].val_acc):
                 self.best_metrics['val_acc'] = metrics
-                self.logger.debug(f"New best validation accuracy: {metrics.val_acc}")
+                self.logger.info(f"New best validation accuracy: {metrics.val_acc}")
         
         # Update training accuracy (higher is better)
         if (metrics.train_acc is not None and 
@@ -190,7 +190,7 @@ class TrainingMetricsTracker(IMetricsTracker):
                 (self.best_metrics['train_acc'].train_acc is None or 
                  metrics.train_acc > self.best_metrics['train_acc'].train_acc)):
                 self.best_metrics['train_acc'] = metrics
-                self.logger.debug(f"New best training accuracy: {metrics.train_acc}")
+                self.logger.info(f"New best training accuracy: {metrics.train_acc}")
         
         # Handle additional metrics dynamically
         if metrics.additional_metrics:
@@ -199,8 +199,8 @@ class TrainingMetricsTracker(IMetricsTracker):
                 if (metric_name not in self.best_metrics or
                     value > self.best_metrics[metric_name].additional_metrics.get(metric_name, float('-inf'))):
                     self.best_metrics[metric_name] = metrics
-                    self.logger.debug(f"New best {metric_name}: {value}")
-    
+                    self.logger.info(f"New best {metric_name}: {value}")
+
     def get_best_metric(self, metric_name: str) -> Optional[TrainingMetrics]:
         """Retrieve the best metric by key with thread safety."""
         with self._lock:

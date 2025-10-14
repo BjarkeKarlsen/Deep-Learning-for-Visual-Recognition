@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 from abc import ABC, abstractmethod
 
-# TODO: Consider using pandas DataFrame for easier metric handling
+# TODO: Consider using pandas DataFrame for easier metric handling polars 
 # TODO: Add support for TensorBoard logging
 # TODO: Add support for different evaluation metrics (e.g., IoU for segmentation) and also for classification
 

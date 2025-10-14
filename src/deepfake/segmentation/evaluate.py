@@ -3,14 +3,15 @@ from dataclasses import asdict
 import os
 from typing import Dict
 
+from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from datasets import DownloadMode
 
-from deepfake.data.dataset_manager import SIDDatasetManager
-from deepfake.segmentation.dataset import TamperedSegmentationDataset
+from deepfake.data.dataset_manager import TEST, DatasetFilters, SIDDatasetManager
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.evaluation_metrics_tracker import SegmentationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.utils.logger import SidLogger
@@ -34,53 +35,44 @@ def dice_and_iou(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7)
     iou = (overlap + eps) / (union_iou + eps)
     return {"dice": dice.mean(), "iou": iou.mean()}
 
-
-def prepare_dataloader(dataset, cfg: Config) -> DataLoader:
-    """Wrap a segmentation subset with transforms or return `None` when empty."""
-    if dataset is None or len(dataset) == 0:
-        return None
-
-    wrapped = TamperedSegmentationDataset(
-        dataset,
-        image_size=cfg.data.image_size,
-        normalize_mean=cfg.model.normalize_mean,
-        normalize_std=cfg.model.normalize_std,
-    )
-    return DataLoader(
-        wrapped,
-        batch_size=cfg.loader.batch_size,
-        shuffle=False,
-        num_workers=cfg.loader.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
-
 @torch.no_grad()
 def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     """Evaluate a trained U-Net and persist Dice/IoU summaries."""
     device = torch.device(cfg.training.device)
+    
     logger.log_evaluation_config(asdict(cfg))
 
     check_model_exists(cfg.paths.model_path)
 
-    with SIDDatasetManager(
+    manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
-        use_disk_cache=cfg.data.use_disk_cache,
         use_streaming=cfg.data.use_streaming,
-    ) as manager:
-        _, _, test_ds = manager.get_segmentation_splits(
-            tampered_label=getattr(cfg.model, "tampered_label", 2),
-            train_max=0,
-            val_max=0,
-            test_max=cfg.data.test_samples,
-            test_offset=cfg.data.val_samples,
-        )
+        download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
+    )
+    
+    test_ds = manager.get_split(
+        split_type=TEST,
+        max_samples=cfg.data.test_samples,
+        use_test_or_val_as_test_set=True,
+        val_offset=cfg.data.val_samples,
+        filter_fn=DatasetFilters.tampered_with_masks,
+    )
 
-    test_loader = prepare_dataloader(test_ds, cfg)
-    if test_loader is None:
-        raise RuntimeError("No tampered samples with masks available for evaluation")
+    test_loader = DataLoader(
+        SIDClassificationDataset(
+            test_ds,
+            image_size=cfg.data.image_size,
+            normalize_mean=cfg.model.normalize_mean,
+            normalize_std=cfg.model.normalize_std,
+            return_mask=True,
+        ),
+        batch_size=cfg.loader.batch_size,
+        shuffle=True,
+        num_workers=cfg.loader.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
 
     metrics_tracker = EvaluationMetricsTracker(SegmentationEvaluationMetrics, logger=logger)
-
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     model_persister = TorchModelPersister()
@@ -93,9 +85,10 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     iou_scores = []
 
     with torch.no_grad():
-        for images, masks in tqdm(test_loader, desc="Seg Eval"):
-            images = images.to(device)
-            masks = masks.to(device)
+        pbar = tqdm(test_loader, desc="Seg Eval")
+        for batch in pbar:
+            images = batch["image"].to(device)
+            masks = batch["mask"].to(device)
             logits = model(images)
             metrics = dice_and_iou(logits, masks)
             dice_scores.append(metrics["dice"].item())
