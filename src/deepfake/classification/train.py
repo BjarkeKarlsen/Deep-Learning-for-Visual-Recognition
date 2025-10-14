@@ -183,10 +183,3 @@ def train(logger: SidLogger, cfg: Config):
 
     plotter.plot_training_history()
     plotter.plot_learning_rate_schedule()
-
-    #def run():
-    # for epoch in range(epochs):
-    #     static = model.train()   
-    #     static = model.eval()   
-    
-    #    metric
