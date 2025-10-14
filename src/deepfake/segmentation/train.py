@@ -54,11 +54,10 @@ class Trainer:
         logger.log_training_config(asdict(cfg))
 
     def train(self, start_epoch: int = 0):
-        train_loader, val_loader = self._load_data()
-        # Determine previous best before recording current metrics
-        prev_best = self.metrics_tracker.get_best_metric("val_dice")
-        prev_best_val = prev_best.additional_metrics.get("val_dice") if prev_best and prev_best.additional_metrics.get("val_dice") is not None else float('-inf')
-
+        """Train the tamper segmentation model on the configured SID subsets."""
+        prev_best = None
+        prev_best_val = float('-inf')
+        
         # LOAD THE DATA
         train_loader, val_loader = self._load_data()
 
@@ -69,6 +68,11 @@ class Trainer:
             # TRAIN & EVAL
             avg_train_loss, avg_train_dice = self._train_epoch(train_loader, epoch)
             avg_val_loss, avg_val_dice = self._evaluation(val_loader)
+            
+            # Determine previous best before recording current metrics
+            prev_best = self.metrics_tracker.get_best_metric("val_dice")
+            prev_best_val = prev_best.additional_metrics.get("val_dice") if prev_best and prev_best.additional_metrics.get("val_dice") is not None else float('-inf')
+
 
             # RECORD METRICS
             self.metrics_tracker.add_metrics(TrainingMetrics(

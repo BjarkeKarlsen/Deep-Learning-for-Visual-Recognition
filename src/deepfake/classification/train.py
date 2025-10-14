@@ -53,9 +53,8 @@ class Trainer:
 
     def train(self, start_epoch: int = 0):
         """Train the lightweight classifier on the configured SID subsets."""
-        # Determine previous best before recording current metrics
-        prev_best = self.metrics_tracker.get_best_metric("val_acc")
-        prev_best_val = prev_best.val_acc if prev_best and prev_best.val_acc is not None else float('-inf')
+        prev_best = None
+        prev_best_val = float('-inf')
         
         # LOAD THE DATA
         train_loader, val_loader = self._load_data(self.cfg)
@@ -67,6 +66,10 @@ class Trainer:
             # TRAIN & EVAL
             train_acc, avg_train_loss = self._train_epoch(train_loader, epoch)
             val_acc, avg_val_loss = self._evaluation(val_loader)
+
+            # DETERMINE PREVIOUS BEST BEFORE RECORDING CURRENT METRICS
+            prev_best = self.metrics_tracker.get_best_metric("val_acc")
+            prev_best_val = prev_best.val_acc if prev_best and prev_best.val_acc is not None else float('-inf')
             
             # RECORD METRICS
             self.metrics_tracker.add_metrics(TrainingMetrics(
@@ -87,7 +90,7 @@ class Trainer:
                 val_loss=avg_val_loss,
                 val_acc=val_acc,
             )
-            
+                
             # SAVE BEST MODEL IF IMPROVED
             if val_acc > prev_best_val:
                 self.persister.save_model(self.model, self.cfg.paths.model_path)
