@@ -80,8 +80,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             return_mask=True,
         ),
         batch_size=cfg.loader.batch_size,
-        shuffle=True,
-        num_workers=cfg.loader.num_workers,
+        shuffle=True if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
+        num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0, # Multiprocessing with streaming datasets is not supported
         pin_memory=torch.cuda.is_available(),
     )
 
@@ -95,7 +95,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         ),
         batch_size=cfg.loader.batch_size,
         shuffle=False,
-        num_workers=cfg.loader.num_workers,
+        num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0,
         pin_memory=torch.cuda.is_available(),
     )
 
