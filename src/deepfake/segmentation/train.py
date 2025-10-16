@@ -1,4 +1,5 @@
 import math
+import os
 from dataclasses import asdict
 from typing import Dict
 
@@ -12,7 +13,6 @@ from torch.amp import autocast, GradScaler
 
 from deepfake.config import Config
 from deepfake.data.dataset_manager import DatasetFilters, SIDDatasetManager, TRAIN, VALIDATION
-from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.logger import SidLogger
@@ -20,6 +20,8 @@ from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.visualization.segmentation_plots import SegmentationPlots
+from deepfake.utils.model_manager import check_model_exists
+
 
 def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
     """
@@ -101,12 +103,23 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
+    model_persister = TorchModelPersister()
+    if check_model_exists(cfg.paths.model_path):
+        model_persister.load_model(
+            model,
+            cfg.paths.model_path,
+            device=cfg.training.device,
+        )
     criterion = nn.BCEWithLogitsLoss()
     optimizer = build_optimizer(model.parameters(), cfg.training)
     
     metrics_tracker = TrainingMetricsTracker()
+    if os.path.isfile(cfg.paths.history_path):
+        metrics_tracker.load_from_json(cfg.paths.history_path)
+
     scaler = GradScaler(device=cfg.training.device)  # For scaling gradients
 
+    global_step = metrics_tracker.metrics[-1].step if metrics_tracker.metrics else 0
     metrics_tracker.start_training()
     for epoch in range(cfg.training.epochs):
         model.train()
@@ -169,11 +182,16 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
             avg_val_dice = float("nan")
             
         latest_best_metrics = metrics_tracker.get_best_metric("val_dice")
-        prev_best_val = latest_best_metrics.additional_metrics.get("val_dice") if latest_best_metrics else float('-inf')
+        prev_best_val = (
+            latest_best_metrics.additional_metrics.get("val_dice")
+            if latest_best_metrics and latest_best_metrics.additional_metrics
+            else float("-inf")
+        )
 
+        global_step += steps
         metrics_tracker.add_metrics(TrainingMetrics(
             epoch=epoch,
-            step=steps,  # or global_step
+            step=global_step,
             train_loss=avg_train_loss,
             val_loss=avg_val_loss,
             learning_rate=optimizer.param_groups[0]['lr'],
@@ -186,7 +204,7 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
         ))
  
         if avg_val_dice > prev_best_val:
-            TorchModelPersister().save_model(model, cfg.paths.model_path)
+            model_persister.save_model(model, cfg.paths.model_path)
             logger.info(
                 f"Saved best segmentation model at epoch {epoch} "
                 f"(dice={avg_val_dice:.4f})"

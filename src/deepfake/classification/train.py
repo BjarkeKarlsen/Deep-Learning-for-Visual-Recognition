@@ -9,7 +9,6 @@ from dataclasses import asdict
 from deepfake.config import Config
 from deepfake.utils.optimizer_factory import build_optimizer
 from deepfake.utils.model_manager import check_model_exists
-from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.data.dataset_manager import SIDDatasetManager, TRAIN, VALIDATION
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.model_persister import TorchModelPersister
@@ -17,7 +16,6 @@ from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMet
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.data.dataset import SIDClassificationDataset
 from .model import BaselineClassifier
-
 
 
 def train(logger: SidLogger, cfg: Config):
@@ -90,6 +88,10 @@ def train(logger: SidLogger, cfg: Config):
 
     best_val_acc = None
     best_epoch = None
+    previous_best = metrics_tracker.get_best_metric("val_acc")
+    if previous_best is not None and previous_best.val_acc is not None:
+        best_val_acc = previous_best.val_acc
+        best_epoch = previous_best.epoch
     metrics_tracker.start_training()
     # Def train loop
     for epoch in range(cfg.training.epochs):
@@ -166,20 +168,22 @@ def train(logger: SidLogger, cfg: Config):
                 best_epoch = epoch
                 model_persister = TorchModelPersister()
                 model_persister.save_model(model, cfg.paths.model_path)
-                logger.info(f"Saved best model (val_acc: {val_acc:.1f}%)")
+                logger.info(f"Saved best model (val_acc: {val_acc * 100:.1f}%)")
 
 
     metrics_tracker.end_training()
+    summary = metrics_tracker.get_summary_stats()
+    duration_minutes = summary.get('duration_minutes')
+    total_time_seconds = duration_minutes * 60 if duration_minutes is not None else None
     
     logger.log_training_complete(
-        total_time=metrics_tracker.get_summary_stats().get('duration_minutes'),
+        total_time=total_time_seconds,
         best_metric=best_val_acc,
         best_epoch=best_epoch,
     )
     
     metrics_tracker.save_to_json(cfg.paths.history_path)
     
-    summary = metrics_tracker.get_summary_stats()
     logger.info(f"Training Summary: {summary}")
 
     
