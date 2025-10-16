@@ -42,7 +42,8 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
     
     logger.log_evaluation_config(asdict(cfg))
 
-    check_model_exists(cfg.paths.model_path)
+    if not check_model_exists(cfg.paths.model_path):
+        raise FileNotFoundError(f"Model checkpoint not found at {cfg.paths.model_path}")
 
     manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
@@ -76,7 +77,11 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     model = TamperSegmentationModel(in_channels=3, out_channels=1).to(device)
     model_persister = TorchModelPersister()
-    model_persister.load_model(model, cfg.paths.model_path)
+    model_persister.load_model(
+        model,
+        cfg.paths.model_path,
+        device=cfg.training.device,
+    )
     model.eval()
     
     gallery = []
@@ -123,14 +128,19 @@ def evaluate(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
     results = {"dice_coefficient": mean_dice, "mean_iou": mean_iou}
     logger.save_json(results, "segmentation_evaluation.json")
-    evaluation_metrics_path = os.path.join(cfg.paths.run_root, "evaluation_metrics.json")
-    # plotter = SegmentationPlots()
-    # for idx, (im, true_m, pred_m) in enumerate(gallery, start=1):
-    #     save_path = cfg.paths.output_dir / f"segmentation_example_{idx}.png"
-    #     plotter.plot_segmentation(im, true_m, pred_m, save_path=str(save_path))
-    plotter = SegmentationPlots(output_directory=str(cfg.paths.run_root), eval_history_path=str(evaluation_metrics_path))
-    gallery_path = cfg.paths.run_root / "segmentation_gallery.png"
-    plotter.plot_segmentation_gallery(gallery, ncols=3, save_path=str(gallery_path))
+
+    evaluation_metrics_path = cfg.paths.metrics_path
     metrics_tracker.save_to_json(evaluation_metrics_path)
+
+    plotter = SegmentationPlots(
+        output_directory=str(cfg.paths.run_root),
+        eval_history_path=str(evaluation_metrics_path),
+    )
+    plotter.plot_segmentation_gallery(
+        gallery,
+        ncols=3,
+        filename="segmentation_gallery.png",
+        save_path=str(cfg.paths.run_root),
+    )
 
     return results

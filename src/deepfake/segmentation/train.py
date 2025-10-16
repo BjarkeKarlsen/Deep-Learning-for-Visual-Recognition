@@ -126,7 +126,8 @@ def train(logger: SidLogger, cfg: Config) -> Dict[str, float]:
 
             scaler.scale(loss).backward()
 
-            # Gradient clipping is applied after backward() and before optimizer step when using mixed precision.
+            # Unscale before clipping so the norm check operates on true gradients.
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()

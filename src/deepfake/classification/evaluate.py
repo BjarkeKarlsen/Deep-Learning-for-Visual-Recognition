@@ -26,7 +26,8 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     logger.log_evaluation_config(asdict(cfg))
 
-    check_model_exists(cfg.paths.model_path)
+    if not check_model_exists(cfg.paths.model_path):
+        raise FileNotFoundError(f"Model checkpoint not found at {cfg.paths.model_path}")
 
     manager = SIDDatasetManager(
         dataset_name=cfg.data.dataset_name,
@@ -58,7 +59,11 @@ def evaluate(logger: SidLogger, cfg: Config):
 
     model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
     model_persister = TorchModelPersister()
-    model_persister.load_model(model, cfg.paths.model_path)
+    model_persister.load_model(
+        model,
+        cfg.paths.model_path,
+        device=cfg.training.device,
+    )
     model.eval()
     
     all_preds = []
@@ -67,7 +72,7 @@ def evaluate(logger: SidLogger, cfg: Config):
     logger.info("Starting evaluation...")
     with logger.time_block("model inference"):
         with torch.no_grad():
-            pbar = tqdm(test_loader, desc="Seg Eval")
+            pbar = tqdm(test_loader, desc="Cls Eval")
             for batch in pbar:
                 images = batch["image"].to(device)
                 labels = batch["label"].to(device)

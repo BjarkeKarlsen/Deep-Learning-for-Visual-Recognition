@@ -81,7 +81,11 @@ def train(logger: SidLogger, cfg: Config):
     criterion = nn.CrossEntropyLoss()
     if check_model_exists(cfg.paths.model_path):
         loader = TorchModelPersister()
-        loader.load_model(model, cfg.paths.model_path)
+        loader.load_model(
+            model,
+            cfg.paths.model_path,
+            device=cfg.training.device,
+        )
     optimizer = build_optimizer(model.parameters(), cfg.training)
 
     best_val_acc = None
