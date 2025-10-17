@@ -48,7 +48,8 @@ class TrainingConfig:
     learning_rate: float = 0.001
     seed: int = 42
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
-    save_interval: int = 5  # Save a checkpoint every N epochs
+    checkpoint_frequency: int = 5                # checkpoint frequency
+    keep_checkpoints: int = 3             # retention policy
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
 
 @dataclass
@@ -61,6 +62,7 @@ class PathsConfig:
     metrics_filename: str = "metrics.json"
     log_filename: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%dT%H%M%SZ") + ".log")
     args_filename: str = "args.json"
+    checkpoints: str = "checkpoints"
     
     def __post_init__(self):
         # Defer directory creation until the task name is populated.
@@ -99,6 +101,12 @@ class PathsConfig:
     def args_path(self) -> Path:
         p = self.run_root / self.args_filename
         p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    
+    @property
+    def checkpoints_path(self) -> Path:
+        p = self.run_root / self.checkpoints
+        p.mkdir(parents=True, exist_ok=True)
         return p
     
 @dataclass(frozen=True)

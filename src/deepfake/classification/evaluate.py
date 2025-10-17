@@ -13,104 +13,126 @@ from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.utils.evaluation_metrics_tracker import ClassificationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.config import Config
 from deepfake.data.dataset_manager import TEST, SIDDatasetManager
-from deepfake.utils.model_manager import check_model_exists
 from deepfake.utils.logger import SidLogger
 
 from ..data.dataset import SIDClassificationDataset
 from .model import BaselineClassifier
 
+class Evaluator:
+    """
+    Runs classification inference, records metrics, and generates plots.
+    """
 
-def evaluate(logger: SidLogger, cfg: Config):
-    """Run classification inference and report accuracy/diagnostics."""
-    device = torch.device(cfg.training.device)
+    def __init__(self, cfg: Config, logger: SidLogger):
+        self.cfg = cfg
+        self.logger = logger
+        self.device = torch.device(cfg.training.device)
 
-    logger.log_evaluation_config(asdict(cfg))
-
-    check_model_exists(cfg.paths.model_path)
-
-    manager = SIDDatasetManager(
-        dataset_name=cfg.data.dataset_name,
-        use_streaming=cfg.data.use_streaming,
-        download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
-    )
-    
-    test_ds = manager.get_split(
+        # Dataset & DataLoader
+        manager = SIDDatasetManager(
+            dataset_name=cfg.data.dataset_name,
+            use_streaming=cfg.data.use_streaming,
+            download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
+        )
+        test_ds = manager.get_split(
             split_type=TEST,
             max_samples=cfg.data.test_samples,
             use_test_or_val_as_test_set=True,
             val_offset=cfg.data.val_samples,
-    )
+        )
+        self.test_loader = DataLoader(
+            SIDClassificationDataset(
+                test_ds,
+                image_size=cfg.data.image_size,
+                normalize_mean=cfg.model.normalize_mean,
+                normalize_std=cfg.model.normalize_std,
+                return_label=True,
+            ),
+            batch_size=cfg.loader.batch_size,
+            shuffle=cfg.loader.shuffle_test,
+            num_workers=cfg.loader.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
 
-    test_loader = DataLoader(
-        SIDClassificationDataset(
-            test_ds,
-            image_size=cfg.data.image_size,
-            normalize_mean=cfg.model.normalize_mean,
-            normalize_std=cfg.model.normalize_std,
-            return_label=True,
-        ),
-        batch_size=cfg.loader.batch_size,
-        shuffle=cfg.loader.shuffle_test,
-        num_workers=cfg.loader.num_workers,
-    )
+        # Metrics tracker
+        self.metrics_tracker = EvaluationMetricsTracker(
+            ClassificationEvaluationMetrics,
+            logger,
+        )
 
-    metrics_tracker = EvaluationMetricsTracker(ClassificationEvaluationMetrics, logger=logger)
+        # Model
+        self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
+        self.persister = TorchModelPersister()
+        self.persister.load_model(self.model, self.cfg.paths.model_path)
+        self.logger.info(f"Loaded model from {self.cfg.paths.model_path}")
 
-    model = BaselineClassifier(num_classes=cfg.model.num_classes).to(device)
-    model_persister = TorchModelPersister()
-    model_persister.load_model(model, cfg.paths.model_path)
-    model.eval()
-    
-    all_preds = []
-    all_labels = []
 
-    logger.info("Starting evaluation...")
-    with logger.time_block("model inference"):
-        with torch.no_grad():
-            pbar = tqdm(test_loader, desc="Seg Eval")
-            for batch in pbar:
-                images = batch["image"].to(device)
-                labels = batch["label"].to(device)
-                outputs = model(images)
+    def run(self):
+        """Execute the full evaluation pipeline."""
+        self.logger.log_evaluation_config(asdict(self.cfg))
+        labels, preds = self.infer()
+        self.compute_and_log(labels, preds)
+        self.save_and_plot()
+        self.logger.info("Evaluation complete")
+
+
+    @torch.no_grad()
+    def infer(self):
+        """Run inference over the test set and collect predictions."""
+        self.model.eval()
+        all_preds, all_labels = [], []
+        self.logger.info("Starting evaluation inference")
+        for batch in tqdm(self.test_loader, desc="Eval"):
+            images = batch["image"].to(self.device)
+            labels = batch["label"].to(self.device)
+            with torch.no_grad():
+                outputs = self.model(images)
                 _, predicted = torch.max(outputs, 1)
-                all_preds.extend(predicted.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
+            all_preds.extend(predicted.cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
+        return all_labels, all_preds
 
-    accuracy = 100 * np.mean(np.array(all_preds) == np.array(all_labels))
-    logger.info(f"Overall Accuracy: {accuracy:.2f}%")
+    def compute_and_log(self, labels, preds):
+        """Compute accuracy, classification report, confusion matrix, and log them."""
+        accuracy = float(np.mean(np.array(preds) == np.array(labels)))
+        self.logger.info(f"Overall Accuracy: {accuracy:.4f}")
 
-    report_dict = classification_report(
-        all_labels,
-        all_preds,
-        target_names=list(cfg.model.class_names),
-        output_dict=True,
-        zero_division=0 
-    )
-    logger.log_classification_report(report_dict)
+        from sklearn.metrics import classification_report, confusion_matrix
 
-    cm = confusion_matrix(all_labels, all_preds)
-    logger.log_confusion_matrix(cm, labels=list(cfg.model.class_names))
+        report = classification_report(
+            labels,
+            preds,
+            target_names=self.cfg.model.class_names,
+            output_dict=True,
+            zero_division=0,
+        )
+        cm = confusion_matrix(labels, preds)
 
-    # Instead of passing a dict, create a proper metrics object:
-    metrics_tracker.add_metrics(ClassificationEvaluationMetrics(
-        task_type="classification",
-        primary_metric="accuracy",
-        primary_score=accuracy / 100.0,  # Convert percentage to decimal
-        accuracy=accuracy / 100.0,
-        classification_report=report_dict,
-        confusion_matrix=cm.tolist(),
-        class_names=list(cfg.model.class_names)
-    ))
+        self.logger.log_classification_report(report)
+        self.logger.log_confusion_matrix(cm, labels=self.cfg.model.class_names)
 
-    metrics_tracker.save_to_json(cfg.paths.metrics_path)
+        # Record evaluation metrics
+        self.metrics_tracker.add_metrics(
+            ClassificationEvaluationMetrics(
+                task_type="classification",
+                primary_metric="accuracy",
+                primary_score=accuracy,
+                accuracy=accuracy,
+                classification_report=report,
+                confusion_matrix=cm.tolist(),
+                class_names=self.cfg.model.class_names,
+            )
+        )
 
-    logger.info("Generating visualizations...")
-    classification_plotter = ClassificationPlots(
-        eval_history_path=cfg.paths.metrics_path,
-        output_directory=cfg.paths.run_root
-    )
-    
-    classification_plotter.plot_confusion_matrix()
-    classification_plotter.plot_classification_report()
+    def save_and_plot(self):
+        """Save metrics JSON and generate evaluation plots."""
+        self.metrics_tracker.save_to_json(self.cfg.paths.metrics_path)
+        self.logger.info(f"Saved evaluation metrics to {self.cfg.paths.metrics_path}")
 
-    logger.info("Evaluation complete.")
+        plotter = ClassificationPlots(
+            eval_history_path=self.cfg.paths.metrics_path,
+            output_directory=self.cfg.paths.run_root,
+        )
+        plotter.plot_confusion_matrix()
+        plotter.plot_classification_report()
+        self.logger.info("Generated evaluation plots")

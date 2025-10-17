@@ -29,6 +29,8 @@ training:
   epochs: 10
   learning_rate: 0.0003
   seed: 42
+  checkpoint_frequency: 5               
+  keep_checkpoints: 3          
   optimizer:
     name: adamw
     weight_decay: 0.01
@@ -43,3 +45,4 @@ paths:
   history_filename: history.json
   metrics_filename: evaluation_metrics.json
   log_filename: logs
+  checkpoints: checkpoints
