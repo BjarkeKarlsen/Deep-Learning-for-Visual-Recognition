@@ -19,12 +19,12 @@ data:
     gaussian_blur_prob: 0.1
     gaussian_blur_sigma_min: 0.1
     gaussian_blur_sigma_max: 2.0
-    random_erasing_prob: 0.1
+    random_erasing_prob: 0
     random_erasing_scale_min: 0.02
     random_erasing_scale_max: 0.2
     random_erasing_ratio_min: 0.3
     random_erasing_ratio_max: 3.3
-    preview_samples: 8
+    preview_samples: 24
     preview_seed: 1234
 
 loader:
