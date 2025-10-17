@@ -22,6 +22,7 @@ from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMet
 from deepfake.utils.scheduler_factory import SchedulerFactory
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 from .dice_coefficient import dice_coefficient
+from deepfake.utils.augmentation_factory import build_segmentation_transforms
 
 class Trainer:
     """
@@ -246,11 +247,28 @@ class Trainer:
             use_streaming=self.cfg.data.use_streaming,
             download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
         )
+
+        train_joint_tf, train_image_tf, train_mask_tf = build_segmentation_transforms(
+            self.cfg.data.image_size,
+            self.cfg.model.normalize_mean,
+            self.cfg.model.normalize_std,
+            self.cfg.data.augment,
+            is_train=True,
+        )
+        val_joint_tf, val_image_tf, val_mask_tf = build_segmentation_transforms(
+            self.cfg.data.image_size,
+            self.cfg.model.normalize_mean,
+            self.cfg.model.normalize_std,
+            self.cfg.data.augment,
+            is_train=False,
+        )
+
         train_ds = manager.get_split(
             split_type=TRAIN,
             max_samples=self.cfg.data.train_samples,
             filter_fn=DatasetFilters.tampered_with_masks
         )
+        self._save_augmentation_preview(train_ds, train_joint_tf, train_image_tf, train_mask_tf)
         val_ds = manager.get_split(
             split_type=VALIDATION,
             max_samples=self.cfg.data.val_samples,
@@ -260,6 +278,9 @@ class Trainer:
             SIDClassificationDataset(train_ds, image_size=self.cfg.data.image_size,
                                      normalize_mean=self.cfg.model.normalize_mean,
                                      normalize_std=self.cfg.model.normalize_std,
+                                     transform=train_image_tf,
+                                     transform_mask=train_mask_tf,
+                                     joint_transform=train_joint_tf,
                                      return_mask=True),
             batch_size=self.cfg.loader.batch_size,
             shuffle=not self.cfg.data.use_streaming and self.cfg.loader.shuffle_train,
@@ -270,6 +291,9 @@ class Trainer:
             SIDClassificationDataset(val_ds, image_size=self.cfg.data.image_size,
                                      normalize_mean=self.cfg.model.normalize_mean,
                                      normalize_std=self.cfg.model.normalize_std,
+                                     transform=val_image_tf,
+                                     transform_mask=val_mask_tf,
+                                     joint_transform=val_joint_tf,
                                      return_mask=True),
             batch_size=self.cfg.loader.batch_size,
             shuffle=False,
@@ -277,6 +301,66 @@ class Trainer:
             pin_memory=torch.cuda.is_available(),
         )
         return train_loader, val_loader
-            
-        
-        
+
+    def _save_augmentation_preview(self, dataset, joint_transform, image_transform, mask_transform):
+        """Optionally save a grid of augmented image-mask pairs for quick sanity checks."""
+        augment_cfg = getattr(self.cfg.data, "augment", None)
+        if not augment_cfg or not getattr(augment_cfg, "enable", False):
+            return
+
+        preview_samples = getattr(augment_cfg, "preview_samples", 0)
+        if preview_samples <= 0:
+            return
+
+        try:
+            dataset_length = len(dataset)
+        except TypeError:
+            self.logger.warning("Skipping augmentation preview: dataset length unavailable")
+            return
+
+        if dataset_length == 0:
+            self.logger.warning("Skipping augmentation preview: dataset is empty")
+            return
+
+        count = min(preview_samples, dataset_length)
+        rng = torch.Generator().manual_seed(getattr(augment_cfg, "preview_seed", 1234))
+        indices = torch.randperm(dataset_length, generator=rng)[:count]
+
+        from torchvision.utils import make_grid, save_image
+        overlay_images = []
+        mean = torch.tensor(self.cfg.model.normalize_mean).view(3, 1, 1)
+        std = torch.tensor(self.cfg.model.normalize_std).view(3, 1, 1)
+
+        for idx in indices:
+            example = dataset[int(idx)]
+            image = SIDClassificationDataset.to_rgb(example["image"])
+            mask = example.get("mask")
+            if mask is None:
+                continue
+
+            augmented_image, augmented_mask = joint_transform(image, mask)
+            image_tensor = image_transform(augmented_image)
+            mask_tensor = mask_transform(augmented_mask)
+
+            denorm = (image_tensor * std + mean).clamp(0.0, 1.0)
+            overlay = self._apply_mask_overlay(denorm, mask_tensor)
+            overlay_images.append(overlay)
+
+        if not overlay_images:
+            self.logger.warning("Skipping augmentation preview: no samples processed successfully")
+            return
+
+        overlays = torch.stack(overlay_images)
+        grid = make_grid(overlays, nrow=min(8, len(overlay_images)))
+        preview_path = self.cfg.paths.run_root / "augmentation_preview_segmentation.png"
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        save_image(grid, preview_path)
+        self.logger.info(f"Saved segmentation augmentation preview with {len(overlay_images)} samples to {preview_path}")
+
+    @staticmethod
+    def _apply_mask_overlay(image_tensor: torch.Tensor, mask_tensor: torch.Tensor, color=(1.0, 0.0, 0.0), alpha: float = 0.4):
+        """Blend a colored mask onto the denormalised image for visual inspection."""
+        color_tensor = torch.tensor(color, device=image_tensor.device, dtype=image_tensor.dtype).view(3, 1, 1)
+        alpha_tensor = alpha * mask_tensor
+        overlay = (1 - alpha_tensor) * image_tensor + alpha_tensor * color_tensor
+        return overlay.clamp(0.0, 1.0)

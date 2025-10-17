@@ -2,8 +2,8 @@ data:
   dataset_name: saberzl/SID_Set
   image_size: 224
   train_samples: 5000
-  val_samples: 800
-  test_samples: 800
+  val_samples: 1000
+  test_samples: 1000
   use_streaming: false
   use_disk_cache: true
   augment:
@@ -24,7 +24,7 @@ data:
     random_erasing_scale_max: 0.2
     random_erasing_ratio_min: 0.3
     random_erasing_ratio_max: 3.3
-    preview_samples: 0
+    preview_samples: 32
     preview_seed: 1234
 
 loader:

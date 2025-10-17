@@ -18,6 +18,7 @@ from deepfake.utils.evaluation_metrics_tracker import SegmentationEvaluationMetr
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_persister import TorchModelPersister, IModelPersister
 from deepfake.config import Config
+from deepfake.utils.augmentation_factory import build_segmentation_transforms
 
 
 class Evaluator:
@@ -48,12 +49,22 @@ class Evaluator:
             val_offset=cfg.data.val_samples,
             filter_fn=DatasetFilters.tampered_with_masks,
         )
+        joint_tf, image_tf, mask_tf = build_segmentation_transforms(
+            cfg.data.image_size,
+            cfg.model.normalize_mean,
+            cfg.model.normalize_std,
+            cfg.data.augment,
+            is_train=False,
+        )
         self.test_loader = DataLoader(
             SIDClassificationDataset(
                 test_ds,
                 image_size=cfg.data.image_size,
                 normalize_mean=cfg.model.normalize_mean,
                 normalize_std=cfg.model.normalize_std,
+                transform=image_tf,
+                transform_mask=mask_tf,
+                joint_transform=joint_tf,
                 return_mask=True,
             ),
             batch_size=cfg.loader.batch_size,
