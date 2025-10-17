@@ -19,7 +19,6 @@ else:
     _IMPORT_ERROR = None
 from omegaconf import OmegaConf
 
-from deepfake.cli import run_train
 from deepfake.config import Config as ConfigSchema
 
 CONFIGS_DIR = Path(__file__).resolve().parents[2] / "configs"
@@ -171,7 +170,8 @@ def run_tuning(
 
         train_args = SimpleNamespace(task=task, env=env, runid=None, checkpoint=None)
         try:
-            run_train(cfg, train_args)
+            from deepfake.cli import run_train as _run_train  # local import to avoid circular dependencies
+            _run_train(cfg, train_args)
         except Exception as exc:
             trial.set_user_attr("error", str(exc))
             if not keep_runs:
