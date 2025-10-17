@@ -59,7 +59,6 @@ pip install -e .
 - CUDA support is auto-detected when available; otherwise, the toolkit defaults to CPU.
 - Choose the installation method (CPU or GPU) based on your hardware capabilities.
 - For Conda users, the recommended Python version is 3.12 to ensure compatibility.
-- Hyperparameter tuning (`deepfake-cli tune` or `python scripts/tune.py`) requires the optional `optuna` dependency. Install it via `pip install optuna` or `pip install "deepfake-toolkit[tune]"`.
 
 ---
 
@@ -165,11 +164,7 @@ The trainer restores model weights, optimizer state, and history, then resumes a
 
 We ship a small Optuna harness that reuses the existing training pipeline to search for better hyperparameters.
 
-1. Install the optional dependency:
-   ```bash
-   pip install optuna
-   ```
-2. Run the tuner (examples below target the lightweight `dev` configs for quick iterations):
+Run the tuner (examples below target the lightweight `dev` configs for quick iterations):
 
    **Classification**
    ```bash
@@ -181,15 +176,13 @@ We ship a small Optuna harness that reuses the existing training pipeline to sea
    deepfake-cli tune --task segmentation --env dev --n-trials 30 --device cuda
    ```
 
-   (Alternatively, `python scripts/tune.py ...` wraps the same functionality.)
-
-   Key flags:
+Key flags:
    - `--n-trials` / `--timeout` control the budget.
    - `--storage` and `--study-name` let you resume studies (defaults to `sqlite:///optuna_study.db`).
    - `--pruner` enables Optuna’s median pruner to stop weak trials early.
    - `--keep-runs` preserves the generated `outputs/<task>/runs/<timestamp>_trial#` folders for manual inspection (otherwise they are cleaned automatically once the metric is recorded).
 
-3. Inspect results:
+Inspect results:
    ```bash
    optuna-dashboard sqlite:///optuna_study.db
    ```
