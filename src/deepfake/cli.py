@@ -107,9 +107,9 @@ def run_train(cfg: Config, args):
             metrics_tracker.load_from_json(checkpoint_data['metrics_path'])
             logger.info(f"Loaded metrics from checkpoint epoch {resume_epoch}")
         if not checkpoint_data.get('model_loaded'):
-            logger.warning(f"Checkpoint epoch {resume_epoch} missing model state; continuing with current weights")
+            logger.logger.warning(f"Checkpoint epoch {resume_epoch} missing model state; continuing with current weights")
         if not checkpoint_data.get('optimizer_loaded'):
-            logger.warning(f"Checkpoint epoch {resume_epoch} missing optimizer state; optimizer reinitialised")
+            logger.logger.warning(f"Checkpoint epoch {resume_epoch} missing optimizer state; optimizer reinitialised")
 
     trainer.train(start_epoch=start_epoch)
 
