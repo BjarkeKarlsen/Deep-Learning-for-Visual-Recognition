@@ -8,8 +8,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
-import optuna
-from optuna.trial import Trial
+try:
+    import optuna
+    from optuna.trial import Trial
+except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+    optuna = None  # type: ignore
+    Trial = None  # type: ignore
+    _IMPORT_ERROR = exc
+else:
+    _IMPORT_ERROR = None
 from omegaconf import OmegaConf
 
 from deepfake.cli import run_train
@@ -129,6 +136,10 @@ def run_tuning(
     keep_runs: bool = False,
     device: Optional[str] = None,
 ) -> optuna.study.Study:
+    if optuna is None:  # pragma: no cover
+        raise ModuleNotFoundError(
+            "Optuna is not installed. Install it with `pip install optuna` to use the tune command."
+        ) from _IMPORT_ERROR
     base_cfg_path = _build_base_config_path(task, env)
 
     study = optuna.create_study(
