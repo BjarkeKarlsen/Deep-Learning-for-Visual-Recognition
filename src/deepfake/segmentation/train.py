@@ -1,7 +1,6 @@
 import os
-import math
 from dataclasses import asdict
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import torch
 import torch.nn as nn
@@ -48,7 +47,8 @@ class Trainer:
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
-        self.scaler = GradScaler()
+        self.amp_enabled = (self.device.type == "cuda" and torch.cuda.is_available())
+        self.scaler = GradScaler(enabled=self.amp_enabled)
         self.scheduler = None
         self.scheduler_step_mode = "epoch"
 
@@ -82,24 +82,30 @@ class Trainer:
 
         # START TRAINING
         self.metrics_tracker.start_training()
+        base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
         # Main training loop: optimise then validate
         for epoch in range(start_epoch, self.cfg.training.epochs):
-            avg_train_loss, avg_train_dice = self._train_epoch(train_loader, epoch)
+            avg_train_loss, avg_train_dice, steps_this_epoch = self._train_epoch(train_loader, epoch)
             avg_val_loss, avg_val_dice = self._evaluation(val_loader)
             
             # Determine previous best before recording current metrics
             prev_best = self.metrics_tracker.get_best_metric("val_dice")
             prev_best_val = prev_best.additional_metrics.get("val_dice") if prev_best and prev_best.additional_metrics.get("val_dice") is not None else float('-inf')
 
+            if self.scheduler and self.scheduler_step_mode == "epoch":
+                self.scheduler.step()
+
+            base_step += steps_this_epoch
+            current_lr = self.optimizer.param_groups[0]['lr']
 
             # RECORD METRICS
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
-                step=(epoch + 1) * len(train_loader),
+                step=base_step,
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
-                learning_rate=self.optimizer.param_groups[0]["lr"],
+                learning_rate=current_lr,
                 additional_metrics={
                     "train_dice": avg_train_dice,
                     "val_dice": avg_val_dice,
@@ -127,22 +133,25 @@ class Trainer:
                 metrics_tracker=self.metrics_tracker,
                 config=self.cfg,
             )
-            if self.scheduler and self.scheduler_step_mode == "epoch":
-                self.scheduler.step()
-
-            if self.scheduler:
-                current_lr = self.optimizer.param_groups[0]['lr']
-                if self.metrics_tracker.metrics:
-                    self.metrics_tracker.metrics[-1].learning_rate = current_lr
 
         # Finish
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
-            
+
+        summary = self.metrics_tracker.get_summary_stats() or {}
+        duration_minutes = summary.get('duration_minutes')
+        total_seconds = duration_minutes * 60 if duration_minutes is not None else None
+        best_record = self.metrics_tracker.get_best_metric("val_dice")
+        best_metric_value: Optional[float] = None
+        best_epoch: Optional[int] = None
+        if best_record and best_record.additional_metrics:
+            best_metric_value = best_record.additional_metrics.get("val_dice")
+            best_epoch = best_record.epoch
+
         self.logger.log_training_complete(
-            total_time=self.metrics_tracker.get_summary_stats().get('duration_minutes'),
-            best_metric=self.metrics_tracker.get_best_metric("val_dice").additional_metrics.get("val_dice"),
-            best_epoch=self.metrics_tracker.get_best_metric("val_dice").epoch,
+            total_time=total_seconds,
+            best_metric=best_metric_value,
+            best_epoch=best_epoch,
         )
         
         # PLOT
@@ -154,7 +163,8 @@ class Trainer:
     def _train_epoch(self, train_loader: DataLoader, epoch: int):
         """Run one training pass over the segmentation dataloader."""
         self.model.train()
-        train_loss, train_dice, steps = 0.0, 0.0, 0
+        loss_sum, dice_sum, steps = 0.0, 0.0, 0
+        total_elements = 0
         
         # ITERATE OVER BATCHES WITH A PROGRESS BAR
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}")
@@ -166,7 +176,7 @@ class Trainer:
             self.optimizer.zero_grad()
             
             # ENABLE MIXED PRECISION FOR FASTER FORWARD AND REDUCED MEMORY
-            with autocast(device_type=self.device.type):
+            with autocast(device_type=self.device.type, enabled=self.amp_enabled):
                 logits = self.model(images)
                 loss = self.criterion(logits, masks)
             
@@ -182,25 +192,30 @@ class Trainer:
                 self.scheduler.step()
 
             # UPDATE TRAINING METRICS
-            train_loss += loss.item()
-            train_dice += dice_coefficient(logits, masks).item()
-            
+            batch_elements = masks.numel()
+            loss_sum += loss.item() * batch_elements
+            total_elements += batch_elements
+            dice_sum += dice_coefficient(logits, masks).item()
+
             steps += 1
             # UPDATE PROGRESS BAR WITH CURRENT LOSS
-            pbar.set_postfix({'loss': f'{loss.item():.3f}', 'dice': f'{train_dice:.3f}'})
+            avg_dice = dice_sum / max(steps, 1)
+            pbar.set_postfix({'loss': f'{loss.item():.3f}', 'dice': f'{avg_dice:.3f}'})
         
         # CALCULATE AVERAGE METRICS    
-        avg_train_loss = train_loss / max(steps, 1)
-        avg_train_dice = train_dice / max(steps, 1)
+        avg_train_loss = loss_sum / total_elements if total_elements else float('nan')
+        avg_train_dice = dice_sum / max(steps, 1)
         
-        return avg_train_loss, avg_train_dice
+        return avg_train_loss, avg_train_dice, steps
 
     @torch.no_grad() # Optimize memory usage and speed up computations
     def _evaluation(self, val_loader: DataLoader):
         """Evaluate segmentation metrics without gradient tracking."""
         
         self.model.eval()
-        val_loss, val_dice = 0.0, 0.0
+        loss_sum, dice_sum = 0.0, 0.0
+        total_elements = 0
+        steps = 0
         
         with torch.no_grad():
             for batch in val_loader:
@@ -212,12 +227,15 @@ class Trainer:
                 loss = self.criterion(logits, masks)
                 
                 # ACCUMULATE LOSS AND DICE SCORE
-                val_loss += loss.item()
-                val_dice += dice_coefficient(logits, masks).item()
+                batch_elements = masks.numel()
+                loss_sum += loss.item() * batch_elements
+                total_elements += batch_elements
+                dice_sum += dice_coefficient(logits, masks).item()
+                steps += 1
         
         # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
-        avg_val_loss = val_loss / len(val_loader) if len(val_loader) > 0 else float('nan')
-        avg_val_dice = val_dice / len(val_loader) if len(val_loader) > 0 else float('nan')
+        avg_val_loss = loss_sum / total_elements if total_elements else float('nan')
+        avg_val_dice = dice_sum / max(steps, 1) if steps else float('nan')
         
         return avg_val_loss, avg_val_dice
     

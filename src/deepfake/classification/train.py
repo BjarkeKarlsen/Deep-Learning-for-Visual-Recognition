@@ -123,7 +123,9 @@ class Trainer:
                 learning_rate=current_lr,
             ))
 
-            train_acc_display = train_acc if not math.isnan(train_acc) else None
+            train_acc_display = (
+                train_acc if (train_acc is not None and not math.isnan(train_acc)) else None
+            )
             val_acc_display = val_acc if val_acc is not None and not math.isnan(val_acc) else None
             self.logger.log_epoch_results(
                 epoch,
