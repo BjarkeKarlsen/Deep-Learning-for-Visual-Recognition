@@ -26,14 +26,18 @@ DEFAULT_STORAGE = "sqlite:///optuna_study.db"
 
 
 def _build_base_config_path(task: str, env: str) -> Path:
-    cfg_name = f"{env}-{task}.yaml"
-    candidate = CONFIGS_DIR / cfg_name
-    if candidate.exists():
-        return candidate
-    fallback = CONFIGS_DIR / f"{task}.yaml"
-    if fallback.exists():
-        return fallback
-    raise FileNotFoundError(f"No base config found for task='{task}' env='{env}'")
+    candidate_names = [
+        f"{env}-{task}.yaml",
+        f"{env}-{task}-smoke.yaml",
+        f"{task}.yaml",
+    ]
+    for name in candidate_names:
+        candidate = CONFIGS_DIR / name
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        f"No base config found for task='{task}' env='{env}'. Checked: {candidate_names}"
+    )
 
 
 def _load_best_metric(run_root: Path, task: str) -> float:
