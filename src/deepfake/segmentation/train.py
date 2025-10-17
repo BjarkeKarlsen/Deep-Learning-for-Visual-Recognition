@@ -39,10 +39,12 @@ class Trainer:
         persister: IModelPersister = None
     ):
         self.cfg = cfg
+        # Keep references to logging/metrics/checkpointing utilities
         self.logger = logger
         self.device = torch.device(cfg.training.device)
 
         # Model, loss, optimizer, scaler
+        # Segmentation model + optimisation primitives
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
@@ -69,6 +71,7 @@ class Trainer:
             steps_per_epoch = len(train_loader)
         except (TypeError, AttributeError):
             steps_per_epoch = 0
+        # Instantiate LR scheduler (cosine/onecycle) if requested
         self.scheduler, self.scheduler_step_mode = SchedulerFactory.create(
             self.optimizer,
             self.cfg.training,
@@ -80,8 +83,8 @@ class Trainer:
         # START TRAINING
         self.metrics_tracker.start_training()
 
+        # Main training loop: optimise then validate
         for epoch in range(start_epoch, self.cfg.training.epochs):
-            # TRAIN & EVAL
             avg_train_loss, avg_train_dice = self._train_epoch(train_loader, epoch)
             avg_val_loss, avg_val_dice = self._evaluation(val_loader)
             
@@ -149,6 +152,7 @@ class Trainer:
 
             
     def _train_epoch(self, train_loader: DataLoader, epoch: int):
+        """Run one training pass over the segmentation dataloader."""
         self.model.train()
         train_loss, train_dice, steps = 0.0, 0.0, 0
         
@@ -193,6 +197,7 @@ class Trainer:
 
     @torch.no_grad() # Optimize memory usage and speed up computations
     def _evaluation(self, val_loader: DataLoader):
+        """Evaluate segmentation metrics without gradient tracking."""
         
         self.model.eval()
         val_loss, val_dice = 0.0, 0.0
@@ -217,6 +222,7 @@ class Trainer:
         return avg_val_loss, avg_val_dice
     
     def _load_data(self):
+        """Prepare train/validation datasets and wrap them in DataLoaders."""
         manager = SIDDatasetManager(
             dataset_name=self.cfg.data.dataset_name,
             use_streaming=self.cfg.data.use_streaming,

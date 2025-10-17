@@ -19,7 +19,7 @@ data:
     gaussian_blur_prob: 0.2
     gaussian_blur_sigma_min: 0.1
     gaussian_blur_sigma_max: 2.0
-    random_erasing_prob: 0.1
+    random_erasing_prob: 0.0
     random_erasing_scale_min: 0.02
     random_erasing_scale_max: 0.2
     random_erasing_ratio_min: 0.3
@@ -57,7 +57,7 @@ training:
   keep_checkpoints: 3
   label_smoothing: 0.1
   grad_clip_norm: 1.0
-  ema_decay: 0.9995
+  ema_decay: 0
   optimizer:
     name: adamw
     weight_decay: 0.01
