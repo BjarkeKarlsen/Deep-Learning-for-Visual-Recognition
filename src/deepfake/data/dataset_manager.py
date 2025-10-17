@@ -55,11 +55,12 @@ class SIDDatasetManager:
         elif split_type == VALIDATION:
             ds = self._load_split(VALIDATION, max_samples=load_n)
         elif split_type == TEST:
-            ds = self._get_test_split(
-                max_samples=load_n,
+            return self._get_test_split(
+                max_samples=max_samples,
                 use_test_or_val_as_test_set=use_test_or_val_as_test_set,
                 val_offset=val_offset,
                 train_offset=train_offset,
+                filter_fn=filter_fn,
             )
         else:
             raise ValueError(f"Unknown split type: {split_type}")
@@ -128,23 +129,46 @@ class SIDDatasetManager:
         use_test_or_val_as_test_set: bool = False,
         val_offset: int = 0,
         train_offset: int = 0,
+        filter_fn: Optional[Callable] = None,
     ) -> Dataset:
-        """Derive test from val (if val_offset > 0) or from train (if val_offset == 0)."""
-        # Try real test split
+        """
+        Build a test split that is disjoint from the validation subset when both
+        originate from the same HuggingFace split (validation/train). Filtering
+        is applied before slicing so the offset is measured on the filtered view.
+        """
         if not use_test_or_val_as_test_set:
-            try:
-                return self._load_split("test", max_samples=max_samples)
-            except Exception:
-                raise ValueError("Test split does not exist and use_test_or_val_as_test_set=False.")
+            if self.use_streaming:
+                return self._collect_streaming_slice(
+                    split=TEST,
+                    start=0,
+                    count=max_samples,
+                    filter_fn=filter_fn,
+                )
+
+            load_n = max_samples
+            if max_samples is not None and filter_fn is not None:
+                load_n = max_samples * 4
+            ds = self._load_split(TEST, max_samples=load_n)
+            if filter_fn:
+                ds = self._filter_dataset(
+                    dataset=ds,
+                    split_type=TEST,
+                    filter_fn=filter_fn,
+                    target_samples=max_samples,
+                )
+            if max_samples is not None and len(ds) > max_samples:
+                ds = ds.select(range(max_samples))
+            return ds
 
         # Case 1: Derive from validation (if val_offset > 0)
         if val_offset > 0:
             if self.use_streaming:
-                val_ds = self._load_split(VALIDATION, max_samples=None)
-                derived = val_ds.skip(val_offset)
-                if max_samples is not None:
-                    derived = derived.take(max_samples)
-                return derived
+                return self._collect_streaming_slice(
+                    split=VALIDATION,
+                    start=val_offset,
+                    count=max_samples,
+                    filter_fn=filter_fn,
+                )
             else:
                 full_val = load_dataset(
                     self.dataset_name,
@@ -153,22 +177,26 @@ class SIDDatasetManager:
                     cache_dir=self.cache_dir,
                     download_mode=self.download_mode,
                 )
+                if filter_fn:
+                    full_val = self._filter_dataset(
+                        dataset=full_val,
+                        split_type=VALIDATION,
+                        filter_fn=filter_fn,
+                    )
                 total = len(full_val)
-                start = min(val_offset, total)  # Start from val_offset
-                if max_samples is not None:
-                    end = min(start + max_samples, total)  # Take max_samples after offset
-                else:
-                    end = total
+                start = min(val_offset, total)
+                end = total if max_samples is None else min(start + max_samples, total)
                 return full_val.select(range(start, end))
 
         # Case 2: Derive from train (if val_offset == 0)
         if val_offset == 0 and train_offset >= 0:
             if self.use_streaming:
-                train_ds = self._load_split(TRAIN, max_samples=None)
-                derived = train_ds.skip(train_offset)
-                if max_samples is not None:
-                    derived = derived.take(max_samples)
-                return derived
+                return self._collect_streaming_slice(
+                    split=TRAIN,
+                    start=train_offset,
+                    count=max_samples,
+                    filter_fn=filter_fn,
+                )
             else:
                 full_train = load_dataset(
                     self.dataset_name,
@@ -177,15 +205,49 @@ class SIDDatasetManager:
                     cache_dir=self.cache_dir,
                     download_mode=self.download_mode,
                 )
+                if filter_fn:
+                    full_train = self._filter_dataset(
+                        dataset=full_train,
+                        split_type=TRAIN,
+                        filter_fn=filter_fn,
+                    )
                 total = len(full_train)
-                start = min(train_offset, total)  # Start from train_offset
-                if max_samples is not None:
-                    end = min(start + max_samples, total)  # Take max_samples after offset
-                else:
-                    end = total
+                start = min(train_offset, total)
+                end = total if max_samples is None else min(start + max_samples, total)
                 return full_train.select(range(start, end))
 
         raise ValueError("Invalid configuration: cannot derive test split.")
+
+    def _collect_streaming_slice(
+        self,
+        *,
+        split: SplitType,
+        start: int,
+        count: Optional[int],
+        filter_fn: Optional[Callable],
+    ) -> Dataset:
+        """
+        Materialise a streaming split, apply optional filtering, and return a
+        contiguous slice [start, start+count) measured over the filtered view.
+        """
+        stream = self._load_split(split, max_samples=None)
+        filtered_samples = []
+        skipped = 0
+        limit = None if count is None else count
+
+        for example in stream:
+            if filter_fn and not filter_fn(example):
+                continue
+
+            if skipped < start:
+                skipped += 1
+                continue
+
+            filtered_samples.append(example)
+            if limit is not None and len(filtered_samples) >= limit:
+                break
+
+        return Dataset.from_list(filtered_samples)
 
 
     def _filter_dataset(
