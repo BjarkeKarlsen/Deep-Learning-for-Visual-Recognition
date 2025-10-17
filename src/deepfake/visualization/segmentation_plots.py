@@ -89,6 +89,13 @@ class SegmentationPlots(CommonPlots):
             ax.set_title("Pred Mask Overlay")
             ax.axis("off")
 
+        # Hide any unused axes so the grid does not show empty frames.
+        total_slots = axes.size
+        used_slots = len(examples) * 2
+        if used_slots < total_slots:
+            for ax in axes.flatten()[used_slots:]:
+                ax.axis("off")
+
         plt.tight_layout()
         
         # Use the base class save_plot method

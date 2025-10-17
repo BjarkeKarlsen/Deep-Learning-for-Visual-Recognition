@@ -112,13 +112,28 @@ class Evaluator:
                 iou_scores.append(metrics["iou"].item())
 
                 if len(gallery) < max_gallery:
-                    img = images[0].cpu()
-                    mean = torch.tensor(self.cfg.model.normalize_mean).view(3,1,1)
-                    std = torch.tensor(self.cfg.model.normalize_std).view(3,1,1)
-                    denorm = (img * std + mean).clamp(0,1).permute(1,2,0).numpy()
-                    true_mask = masks[0].squeeze(0).cpu().numpy()
-                    pred_mask = (torch.sigmoid(logits[0])>0.5).squeeze(0).cpu().numpy().astype(float)
-                    gallery.append((denorm, true_mask, pred_mask))
+                    mean = (
+                        torch.tensor(self.cfg.model.normalize_mean, device=images.device)
+                        .view(3, 1, 1)
+                    )
+                    std = (
+                        torch.tensor(self.cfg.model.normalize_std, device=images.device)
+                        .view(3, 1, 1)
+                    )
+                    for idx_in_batch in range(images.size(0)):
+                        if len(gallery) >= max_gallery:
+                            break
+                        img = images[idx_in_batch]
+                        denorm = (img * std + mean).clamp(0, 1).cpu().permute(1, 2, 0).numpy()
+                        true_mask = masks[idx_in_batch].squeeze(0).cpu().numpy()
+                        pred_mask = (
+                            (torch.sigmoid(logits[idx_in_batch]) > 0.5)
+                            .squeeze(0)
+                            .cpu()
+                            .numpy()
+                            .astype(float)
+                        )
+                        gallery.append((denorm, true_mask, pred_mask))
 
         return dice_scores, iou_scores, gallery
 
