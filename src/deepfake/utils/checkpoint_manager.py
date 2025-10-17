@@ -76,7 +76,11 @@ class CheckpointManager:
         Returns:
             True if checkpoint should be created
         """
-        return (epoch + 1) % self.backup_frequency == 0
+        if self.backup_frequency <= 0:
+            return False
+        if epoch <= 0:
+            return False
+        return epoch % self.backup_frequency == 0
 
     def create_checkpoint(
         self,

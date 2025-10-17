@@ -98,7 +98,7 @@ class Trainer:
                 
             # CHECKPOINT        
             self.checkpoint_mgr.create_checkpoint(
-                epoch=self.metrics_tracker.metrics[-1].epoch + 1,
+                epoch=self.metrics_tracker.metrics[-1].epoch,
                 model=self.model,
                 optimizer=self.optimizer,
                 metrics_tracker=self.metrics_tracker,
@@ -193,16 +193,6 @@ class Trainer:
     
         
     def _load_data(self, cfg: Config):
-        self.manager = SIDDatasetManager(
-            dataset_name=cfg.data.dataset_name,
-            use_streaming=cfg.data.use_streaming,
-            download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
-        )
-
-        train_ds = self.manager.get_split(
-            split_type=TRAIN,
-            max_samples=cfg.data.train_samples,
-        )
         self.manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,

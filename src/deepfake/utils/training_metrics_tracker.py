@@ -199,7 +199,8 @@ class TrainingMetricsTracker(IMetricsTracker):
                 if (self.auto_backup and 
                     self._backup_base_path and 
                     self.backup_frequency > 0 and
-                    (metrics.epoch + 1) % self.backup_frequency == 0):
+                    metrics.epoch > 0 and
+                    metrics.epoch % self.backup_frequency == 0):
                     self._create_epoch_backup(metrics.epoch)
 
                 self.logger.debug(

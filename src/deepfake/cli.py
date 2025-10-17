@@ -73,28 +73,45 @@ def run_train(cfg: Config, args):
 
     # determine start_epoch
     start_epoch = 0
+    resume_epoch = None
     if args.checkpoint is not None:
-        info = checkpoint_mgr.create_training_resume_info(args.checkpoint)
-        start_epoch = info["next_epoch"]
+        resume_epoch = args.checkpoint
+        start_epoch = resume_epoch
         logger.info(f"Resuming {cfg.paths.run_id} from checkpoint epoch {args.checkpoint}")
     elif os.path.isfile(cfg.paths.history_path):
         metrics_tracker.load_from_json(cfg.paths.history_path)
         logger.info(f"Loaded history for run {cfg.paths.run_id}")
 
     if args.task == cfg.Task.CLASSIFICATION:
-        ClassificationTrainer(
+        trainer = ClassificationTrainer(
             cfg=cfg,
             logger=logger,
             metrics_tracker=metrics_tracker,
             checkpoint_mgr=checkpoint_mgr,
-        ).train(start_epoch=start_epoch)
+        )
     else:
-        SegmentationTrainer(
+        trainer = SegmentationTrainer(
             cfg=cfg,
             logger=logger,
             metrics_tracker=metrics_tracker,
             checkpoint_mgr=checkpoint_mgr,
-        ).train(start_epoch=start_epoch)
+        )
+
+    if resume_epoch is not None:
+        checkpoint_data = checkpoint_mgr.load_checkpoint(
+            resume_epoch,
+            model=trainer.model,
+            optimizer=trainer.optimizer,
+        )
+        if checkpoint_data.get('metrics_path'):
+            metrics_tracker.load_from_json(checkpoint_data['metrics_path'])
+            logger.info(f"Loaded metrics from checkpoint epoch {resume_epoch}")
+        if not checkpoint_data.get('model_loaded'):
+            logger.warning(f"Checkpoint epoch {resume_epoch} missing model state; continuing with current weights")
+        if not checkpoint_data.get('optimizer_loaded'):
+            logger.warning(f"Checkpoint epoch {resume_epoch} missing optimizer state; optimizer reinitialised")
+
+    trainer.train(start_epoch=start_epoch)
 
 def run_eval(cfg : Config, args):
     """DISPATCH EVALUATION BASED ON TASK."""

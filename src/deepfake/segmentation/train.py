@@ -182,8 +182,8 @@ class Trainer:
                 val_dice += dice_coefficient(logits, masks).item()
         
         # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
-        avg_val_loss = val_loss / len(val_loader)
-        avg_val_dice = val_dice / len(val_loader)
+        avg_val_loss = val_loss / len(val_loader) if len(val_loader) > 0 else float('nan')
+        avg_val_dice = val_dice / len(val_loader) if len(val_loader) > 0 else float('nan')
         
         return avg_val_loss, avg_val_dice
     
