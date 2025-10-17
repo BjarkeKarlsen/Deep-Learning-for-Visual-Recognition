@@ -1,9 +1,9 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 100000
-  val_samples: 10000
-  test_samples: 10000
+  train_samples: 1000
+  val_samples: 100
+  test_samples: 100
   use_streaming: false
   use_disk_cache: true
   augment:
@@ -51,7 +51,7 @@ model:
     - 0.225
 
 training:
-  epochs: 30
+  epochs: 10
   learning_rate: 0.00012
   seed: 42
   device: cuda

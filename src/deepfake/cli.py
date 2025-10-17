@@ -16,6 +16,7 @@ from deepfake.utils.seed_manager import SeedManager
 from deepfake.utils.logger       import SidLogger
 from deepfake.utils.config_loader import ConfigLoader
 from deepfake.config import Config
+from deepfake.utils.tuner import run_tuning, DEFAULT_STORAGE
 
 
 def make_parser():
@@ -52,6 +53,18 @@ def make_parser():
         required=True,
         help="Which metrics to plot",
     )
+
+    tune_p = subparsers.add_parser("tune", help="Run hyperparameter search")
+    tune_p.add_argument("--task", choices=["classification", "segmentation"], required=True)
+    tune_p.add_argument("--env", choices=["dev", "test"], default="dev")
+    tune_p.add_argument("--n-trials", type=int, default=20)
+    tune_p.add_argument("--timeout", type=int, default=None)
+    tune_p.add_argument("--study-name", default=None)
+    tune_p.add_argument("--storage", default=DEFAULT_STORAGE)
+    tune_p.add_argument("--pruner", action="store_true")
+    tune_p.add_argument("--resume", action="store_true")
+    tune_p.add_argument("--keep-runs", action="store_true")
+    tune_p.add_argument("--device", default=None)
 
     return parser
 
@@ -225,10 +238,37 @@ def run_plot(cfg: Config, args):
             print("Segmentation eval plotting not implemented yet.")
 
 
+def run_tune(args):
+    """Execute an Optuna-based hyperparameter sweep."""
+    study = run_tuning(
+        task=args.task,
+        env=args.env,
+        n_trials=args.n_trials,
+        timeout=args.timeout,
+        storage=args.storage,
+        study_name=args.study_name,
+        pruner=args.pruner,
+        resume=args.resume,
+        keep_runs=args.keep_runs,
+        device=args.device,
+    )
+
+    best = study.best_trial
+    print("Best trial:")
+    print(f"  value: {best.value}")
+    print("  params:")
+    for k, v in best.params.items():
+        print(f"    {k}: {v}")
+
+
 def main():
     parser = make_parser()
     args = parser.parse_args()
-    
+
+    if args.command == "tune":
+        run_tune(args)
+        return
+
     # Load config
     cfg_path = build_config_path(args.task, args.env)
     cfg : Config = ConfigLoader(config_path=cfg_path).get_config()
@@ -250,6 +290,8 @@ def main():
         run_eval(cfg, args)
     elif args.command == "plot":
         run_plot(cfg, args)
+    else:
+        raise ValueError(f"Unknown command: {args.command}")
 
 
 def entrypoint():

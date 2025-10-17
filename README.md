@@ -172,13 +172,15 @@ We ship a small Optuna harness that reuses the existing training pipeline to sea
 
    **Classification**
    ```bash
-   python scripts/tune.py --task classification --env dev --n-trials 30 --device cuda
+   deepfake-cli tune --task classification --env dev --n-trials 30 --device cuda
    ```
 
    **Segmentation**
    ```bash
-   python scripts/tune.py --task segmentation --env dev --n-trials 30 --device cuda
+   deepfake-cli tune --task segmentation --env dev --n-trials 30 --device cuda
    ```
+
+   (Alternatively, `python scripts/tune.py ...` wraps the same functionality.)
 
    Key flags:
    - `--n-trials` / `--timeout` control the budget.
