@@ -21,7 +21,7 @@ from omegaconf import OmegaConf
 
 from deepfake.config import Config as ConfigSchema
 
-CONFIGS_DIR = Path(__file__).resolve().parents[2] / "configs"
+CONFIGS_DIR = Path(__file__).resolve().parents[3] / "configs"
 DEFAULT_STORAGE = "sqlite:///optuna_study.db"
 
 
