@@ -1,18 +1,18 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 512
-  train_samples: 10
-  val_samples: 10
-  test_samples: 10
+  image_size: 224
+  train_samples: 1000
+  val_samples: 100
+  test_samples: 100
   use_streaming: false
   use_disk_cache: true
 
 loader:
-  batch_size: 32
+  batch_size: 24
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
-  num_workers: 4
+  num_workers: 8
 
 model:
   tampered_label: 2
