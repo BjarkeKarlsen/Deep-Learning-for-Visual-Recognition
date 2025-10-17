@@ -71,7 +71,7 @@ class Evaluator:
         # Model
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.persister = persister or TorchModelPersister()
-        self.persister.load_model(self.model, cfg.paths.model_path)
+        self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded segmentation model from {cfg.paths.model_path}")
 
     def run(self):
@@ -137,7 +137,11 @@ class Evaluator:
             output_directory=self.cfg.paths.run_root,
             eval_history_path=metrics_path,
         )
-        plotter.plot_segmentation_gallery(gallery, ncols=3, save_path=str(self.cfg.paths.run_root / "segmentation_gallery.png"))
+        plotter.plot_segmentation_gallery(
+            gallery,
+            ncols=3,
+            filename="segmentation_gallery.png",
+            save_path=self.cfg.paths.run_root,
+        )
         plotter.plot_training_history()  # plots history of dice/IoU
         self.logger.info("Generated segmentation evaluation plots")
-

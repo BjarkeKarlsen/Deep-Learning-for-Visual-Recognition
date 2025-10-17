@@ -4,6 +4,7 @@
 import argparse
 import os
 import uuid
+from pathlib import Path
 from deepfake.utils.checkpoint_manager import CheckpointManager
 import torch.multiprocessing as mp
 from deepfake.classification import ClassificationTrainer, ClassificationEvaluator
@@ -159,9 +160,42 @@ def run_eval(cfg: Config, args):
         SegmentationEvaluator(cfg, logger).run()
 
 
+def _resolve_run_for_stage(cfg: Config, required_file: str) -> Path:
+    initial_run_root = cfg.paths.run_root
+    if cfg.paths.run_id and (initial_run_root / required_file).exists():
+        return initial_run_root
+
+    runs_root = initial_run_root.parent
+    if not runs_root.exists():
+        raise FileNotFoundError(
+            f"No runs found under {runs_root}. Provide --runid to plot a specific run."
+        )
+
+    for candidate in sorted((p for p in runs_root.iterdir() if p.is_dir()), key=lambda p: p.name, reverse=True):
+        if (candidate / required_file).exists():
+            cfg.paths.run_id = candidate.name
+            try:
+                initial_run_root.rmdir()
+            except OSError:
+                pass
+            return candidate
+
+    raise FileNotFoundError(
+        f"Could not find any run in {runs_root} containing {required_file}."
+    )
+
+
 def run_plot(cfg: Config, args):
-    """DISPATCH PLOTTING BASED ON TASK AND STAGE."""
-    run_root = cfg.paths.run_root
+    """Dispatch plotting based on task and stage, defaulting to the latest run when --runid is omitted."""
+    if args.runid:
+        cfg.paths.run_id = args.runid
+
+    required = cfg.paths.history_filename if args.stage == "train" else cfg.paths.metrics_filename
+    run_root = _resolve_run_for_stage(cfg, required)
+
+    if args.runid is None:
+        print(f"Plotting stage '{args.stage}' for latest run {cfg.paths.run_id}")
+
     if args.task == cfg.Task.CLASSIFICATION:
         plots = ClassificationPlots(
             training_history_path=cfg.paths.history_path if args.stage=="train" else None,

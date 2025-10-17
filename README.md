@@ -109,7 +109,7 @@ Example (eval segmentation run):
 deepfake-cli eval --task segmentation --runid 20251010T130000Z --env test
 ```
 
-If you omit `--runid`, the CLI now inspects `outputs/<task>/runs/` and evaluates the most recent run that contains a saved model.
+If you omit `--runid`, the CLI now inspects `outputs/<task>/runs/` and evaluates the most recent run that contains a saved model (plotting uses the latest run with training/eval history).
 
 Plot metrics from history or evaluation
 

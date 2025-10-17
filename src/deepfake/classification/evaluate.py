@@ -72,7 +72,7 @@ class Evaluator:
         # Model
         self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
         self.persister = TorchModelPersister()
-        self.persister.load_model(self.model, self.cfg.paths.model_path)
+        self.persister.load_model(self.model, self.cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded model from {self.cfg.paths.model_path}")
 
 

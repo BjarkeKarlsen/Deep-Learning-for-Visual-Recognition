@@ -324,7 +324,7 @@ class CheckpointManager:
             # Load model state
             model_path = epoch_checkpoint_dir / "model_state.pth"
             if model_path.exists() and model is not None:
-                model_checkpoint = torch.load(model_path)
+                model_checkpoint = torch.load(model_path, map_location=torch.device("cpu"))
                 model.load_state_dict(model_checkpoint['model_state_dict'])
                 loaded_data['model_loaded'] = True
                 loaded_data['model_info'] = {
@@ -337,7 +337,7 @@ class CheckpointManager:
             # Load optimizer state
             optimizer_path = epoch_checkpoint_dir / "optimizer_state.pth"
             if optimizer_path.exists() and optimizer is not None:
-                optimizer_checkpoint = torch.load(optimizer_path)
+                optimizer_checkpoint = torch.load(optimizer_path, map_location=torch.device("cpu"))
                 optimizer.load_state_dict(optimizer_checkpoint['optimizer_state_dict'])
                 loaded_data['optimizer_loaded'] = True
                 loaded_data['optimizer_info'] = {

@@ -49,7 +49,7 @@ class Trainer:
         
          # Load best model if exists
         if os.path.isfile(cfg.paths.model_path):
-            self.persister.load_model(self.model, cfg.paths.model_path)
+            self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
             self.logger.info(f"Loaded best model from {cfg.paths.model_path}")       
         
         self.logger.log_training_config(asdict(cfg))

@@ -40,8 +40,14 @@ class SIDDatasetManager:
           - derive from 'validation' if val_offset > 0
           - derive from 'train' if val_offset == 0 and test_offset >= 0
         """
-        # If filtering, load extra samples to account for filtering since 1 to 3 ratio use for times the amount
-        load_n = max_samples * 4 if filter_fn else max_samples
+        # If filtering, load extra samples to account for post-filter drop-off
+        filter_multiplier = 4
+        if max_samples is None:
+            load_n = None
+        elif filter_fn:
+            load_n = max_samples * filter_multiplier
+        else:
+            load_n = max_samples
         
         # 1. Load raw split (streaming or non-streaming)
         if split_type == TRAIN:
@@ -60,6 +66,10 @@ class SIDDatasetManager:
         
         # 2. If streaming, collect up to max_samples into a real Dataset
         if self.use_streaming:
+            if load_n is None:
+                raise ValueError(
+                    "max_samples must be specified when use_streaming=True to materialise the dataset."
+                )
             ds = ds.take(load_n)
             ds = Dataset.from_list(list(ds))
             print(f"Converted streaming to HF Dataset with {len(ds)} samples")
@@ -131,9 +141,7 @@ class SIDDatasetManager:
         if val_offset > 0:
             if self.use_streaming:
                 val_ds = self._load_split(VALIDATION, max_samples=None)
-                total = len(val_ds)
-                start_idx = max(0, total - val_offset + train_offset)
-                derived = val_ds.skip(start_idx)
+                derived = val_ds.skip(val_offset)
                 if max_samples is not None:
                     derived = derived.take(max_samples)
                 return derived
@@ -157,9 +165,7 @@ class SIDDatasetManager:
         if val_offset == 0 and train_offset >= 0:
             if self.use_streaming:
                 train_ds = self._load_split(TRAIN, max_samples=None)
-                total = len(train_ds)
-                start_idx = max(0, total - train_offset)
-                derived = train_ds.skip(start_idx)
+                derived = train_ds.skip(train_offset)
                 if max_samples is not None:
                     derived = derived.take(max_samples)
                 return derived
