@@ -29,6 +29,7 @@ def _build_base_config_path(task: str, env: str) -> Path:
     candidate_names = [
         f"{env}-{task}.yaml",
         f"{env}-{task}-smoke.yaml",
+        f"{task}-{env}.yaml",
         f"{task}.yaml",
     ]
     for name in candidate_names:
