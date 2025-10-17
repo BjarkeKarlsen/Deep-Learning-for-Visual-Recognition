@@ -34,3 +34,6 @@ include = ["deepfake*"]
 
 [project.scripts]
 deepfake-cli = "deepfake.cli:entrypoint"
+
+[project.optional-dependencies]
+tune = ["optuna>=4.5.0"]

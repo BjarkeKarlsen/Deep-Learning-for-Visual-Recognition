@@ -59,6 +59,7 @@ pip install -e .
 - CUDA support is auto-detected when available; otherwise, the toolkit defaults to CPU.
 - Choose the installation method (CPU or GPU) based on your hardware capabilities.
 - For Conda users, the recommended Python version is 3.12 to ensure compatibility.
+- Hyperparameter tuning (`deepfake-cli tune` or `python scripts/tune.py`) requires the optional `optuna` dependency. Install it via `pip install optuna` or `pip install "deepfake-toolkit[tune]"`.
 
 ---
 
