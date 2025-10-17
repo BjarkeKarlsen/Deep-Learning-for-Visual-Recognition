@@ -160,7 +160,42 @@ The trainer restores model weights, optimizer state, and history, then resumes a
 
 ---
 
-## 4. Troubleshooting & Tips
+## 4. Hyperparameter Tuning
+
+We ship a small Optuna harness that reuses the existing training pipeline to search for better hyperparameters.
+
+1. Install the optional dependency:
+   ```bash
+   pip install optuna
+   ```
+2. Run the tuner (examples below target the lightweight `dev` configs for quick iterations):
+
+   **Classification**
+   ```bash
+   python scripts/tune.py --task classification --env dev --n-trials 30 --device cuda
+   ```
+
+   **Segmentation**
+   ```bash
+   python scripts/tune.py --task segmentation --env dev --n-trials 30 --device cuda
+   ```
+
+   Key flags:
+   - `--n-trials` / `--timeout` control the budget.
+   - `--storage` and `--study-name` let you resume studies (defaults to `sqlite:///optuna_study.db`).
+   - `--pruner` enables Optuna’s median pruner to stop weak trials early.
+   - `--keep-runs` preserves the generated `outputs/<task>/runs/<timestamp>_trial#` folders for manual inspection (otherwise they are cleaned automatically once the metric is recorded).
+
+3. Inspect results:
+   ```bash
+   optuna-dashboard sqlite:///optuna_study.db
+   ```
+
+The tuner samples learning-rate schedule parameters, optimiser regularisation, and augmentation probabilities (classification) / loss settings (segmentation). It writes the best validation metric back to the study and prints the top-performing hyperparameters when complete.
+
+---
+
+## 5. Troubleshooting & Tips
 
 - Set `training.seed` in your YAML to reproduce runs; the CLI applies it at startup.
 - For large streaming jobs, keep `data.use_disk_cache: true` to avoid re-materialising derived splits.
