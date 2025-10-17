@@ -79,7 +79,8 @@ class SIDClassificationDataset(Dataset):
 
         example = self.dataset[idx]
 
-        image = self.transform(example["image"]) if self.transform else example["image"]
+        raw_image = self.to_rgb(example["image"])
+        image = self.transform(raw_image) if self.transform else raw_image
         assert image.ndim == 3 and image.shape[1:] == (self.image_size, self.image_size), (
             f"Image has wrong shape: {image.shape}"
         )

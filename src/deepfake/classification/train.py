@@ -6,6 +6,8 @@ from tqdm import tqdm
 from datasets import DownloadMode
 from dataclasses import asdict
 from torch.amp import autocast, GradScaler
+import numpy as np
+import torchvision.utils as vutils
 
 from deepfake.config import Config
 from deepfake.utils.optimizer_factory import OptimizerFactory
@@ -14,6 +16,7 @@ from deepfake.data.dataset_manager import SIDDatasetManager, TRAIN, VALIDATION
 from deepfake.utils.logger import SidLogger as SidLogger
 from deepfake.utils.model_persister import TorchModelPersister, IModelPersister
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
+from deepfake.utils.augmentation_factory import build_classification_transform
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.utils.checkpoint_manager import CheckpointManager
@@ -192,6 +195,57 @@ class Trainer:
     
     
         
+    def _save_augmentation_preview(self, dataset, transform):
+        augment_cfg = getattr(self.cfg.data, 'augment', None)
+        if not augment_cfg or not getattr(augment_cfg, 'enable', False):
+            return
+
+        preview_samples = getattr(augment_cfg, 'preview_samples', 0)
+        if preview_samples <= 0:
+            return
+
+        try:
+            dataset_length = len(dataset)
+        except TypeError:
+            self.logger.warning('Skipping augmentation preview: dataset length unavailable')
+            return
+
+        if dataset_length == 0:
+            self.logger.warning('Skipping augmentation preview: dataset is empty')
+            return
+
+        count = min(preview_samples, dataset_length)
+        rng = np.random.default_rng(getattr(augment_cfg, 'preview_seed', 1234))
+        indices = rng.integers(0, dataset_length, size=count)
+
+        augmented_images = []
+        for idx in indices:
+            try:
+                example = dataset[int(idx)]
+            except Exception as exc:
+                self.logger.warning(f'Failed to fetch sample {idx} for augmentation preview: {exc}')
+                continue
+
+            raw_image = SIDClassificationDataset.to_rgb(example['image'])
+            augmented = transform(raw_image)
+            augmented_images.append(augmented)
+
+        if not augmented_images:
+            self.logger.warning('Skipping augmentation preview: no samples were processed successfully')
+            return
+
+        device = augmented_images[0].device
+        dtype = augmented_images[0].dtype
+        mean = torch.tensor(self.cfg.model.normalize_mean, dtype=dtype, device=device).view(3, 1, 1)
+        std = torch.tensor(self.cfg.model.normalize_std, dtype=dtype, device=device).view(3, 1, 1)
+        denorm = [torch.clamp(img * std + mean, 0.0, 1.0) for img in augmented_images]
+
+        grid = vutils.make_grid(torch.stack(denorm), nrow=min(4, len(denorm)))
+        preview_path = self.cfg.paths.run_root / 'augmentation_preview.png'
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        vutils.save_image(grid, preview_path)
+        self.logger.info(f'Saved augmentation preview with {len(denorm)} samples to {preview_path}')
+
     def _load_data(self, cfg: Config):
         self.manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
@@ -199,11 +253,28 @@ class Trainer:
             download_mode=DownloadMode.REUSE_DATASET_IF_EXISTS,
         )
 
+        train_transform = build_classification_transform(
+            cfg.data.image_size,
+            cfg.model.normalize_mean,
+            cfg.model.normalize_std,
+            cfg.data.augment,
+            is_train=True,
+        )
+        val_transform = build_classification_transform(
+            cfg.data.image_size,
+            cfg.model.normalize_mean,
+            cfg.model.normalize_std,
+            cfg.data.augment,
+            is_train=False,
+        )
+
         train_ds = self.manager.get_split(
             split_type=TRAIN,
             max_samples=cfg.data.train_samples,
         )
-        
+
+        self._save_augmentation_preview(train_ds, train_transform)
+
         val_ds = self.manager.get_split(
             split_type=VALIDATION,
             max_samples=cfg.data.val_samples,
@@ -216,6 +287,7 @@ class Trainer:
                 image_size=cfg.data.image_size,
                 normalize_mean=cfg.model.normalize_mean,
                 normalize_std=cfg.model.normalize_std,
+                transform=train_transform,
                 max_samples=cfg.data.train_samples,
                 return_label=True,
             ),
@@ -231,6 +303,7 @@ class Trainer:
                 image_size=cfg.data.image_size,
                 normalize_mean=cfg.model.normalize_mean,
                 normalize_std=cfg.model.normalize_std,
+                transform=val_transform,
                 max_samples=cfg.data.val_samples,
                 return_label=True,
             ),

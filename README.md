@@ -70,6 +70,7 @@ pip install -e .
 - `src/deepfake/config/default.yaml` holds the baseline values. Copy a config from `configs/` if you need a custom variant (e.g. `cp configs/classification.yaml configs/classification-large.yaml`) and edit the copy.
 - Paths are derived inside the config via `paths.*`; no need to supply extra CLI flags. Each run gets a timestamped root (`paths.run_id`) under `outputs/<task>/runs/`.
 - `data.use_streaming` is supported but may fall back to local caching depending on the Hugging Face dataset backend.
+- `data.augment` enables optional training-time augmentations (e.g., random crops/flips/jitter) when `enable: true`; set `preview_samples` to dump an `augmentation_preview.png` in the run folder.
 
 See `docs/Configuration.md` for field-by-field details.
 
@@ -108,7 +109,7 @@ Example (eval segmentation run):
 deepfake-cli eval --task segmentation --runid 20251010T130000Z --env test
 ```
 
-If you omit `--runid`, it defaults to the current timestamp–based ID in your config.
+If you omit `--runid`, the CLI now inspects `outputs/<task>/runs/` and evaluates the most recent run that contains a saved model.
 
 Plot metrics from history or evaluation
 

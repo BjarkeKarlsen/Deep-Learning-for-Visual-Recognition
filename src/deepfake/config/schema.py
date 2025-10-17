@@ -3,6 +3,28 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
+@dataclass
+class AugmentationConfig:
+    enable: bool = False
+    random_resized_crop: bool = True
+    scale_min: float = 0.8
+    scale_max: float = 1.0
+    horizontal_flip_prob: float = 0.5
+    color_jitter_brightness: float = 0.2
+    color_jitter_contrast: float = 0.2
+    color_jitter_saturation: float = 0.1
+    color_jitter_hue: float = 0.02
+    gaussian_blur_prob: float = 0.0
+    gaussian_blur_sigma_min: float = 0.1
+    gaussian_blur_sigma_max: float = 2.0
+    random_erasing_prob: float = 0.0
+    random_erasing_scale_min: float = 0.02
+    random_erasing_scale_max: float = 0.2
+    random_erasing_ratio_min: float = 0.3
+    random_erasing_ratio_max: float = 3.3
+    preview_samples: int = 0
+    preview_seed: int = 1234
+
 
 @dataclass
 class DataConfig:
@@ -13,6 +35,7 @@ class DataConfig:
     test_samples: int = 10
     use_streaming: bool = True
     use_disk_cache: bool = True
+    augment: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 @dataclass
 class LoaderConfig:

@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from deepfake.utils.model_persister import TorchModelPersister
 from deepfake.visualization.classification_plots import ClassificationPlots
+from deepfake.utils.augmentation_factory import build_classification_transform
 from deepfake.utils.evaluation_metrics_tracker import ClassificationEvaluationMetrics, EvaluationMetricsTracker
 from deepfake.config import Config
 from deepfake.data.dataset_manager import TEST, SIDDatasetManager
@@ -40,12 +41,20 @@ class Evaluator:
             use_test_or_val_as_test_set=True,
             val_offset=cfg.data.val_samples,
         )
+        test_transform = build_classification_transform(
+            cfg.data.image_size,
+            cfg.model.normalize_mean,
+            cfg.model.normalize_std,
+            cfg.data.augment,
+            is_train=False,
+        )
         self.test_loader = DataLoader(
             SIDClassificationDataset(
                 test_ds,
                 image_size=cfg.data.image_size,
                 normalize_mean=cfg.model.normalize_mean,
                 normalize_std=cfg.model.normalize_std,
+                transform=test_transform,
                 return_label=True,
             ),
             batch_size=cfg.loader.batch_size,

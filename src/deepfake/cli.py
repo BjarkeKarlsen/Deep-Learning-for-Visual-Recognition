@@ -113,9 +113,46 @@ def run_train(cfg: Config, args):
 
     trainer.train(start_epoch=start_epoch)
 
-def run_eval(cfg : Config, args):
-    """DISPATCH EVALUATION BASED ON TASK."""
+def run_eval(cfg: Config, args):
+    """Dispatch evaluation based on task, defaulting to the latest trained run when --runid is omitted."""
+    initial_run_root = cfg.paths.run_root
+
+    if args.runid:
+        cfg.paths.run_id = args.runid
+    else:
+        runs_root = initial_run_root.parent
+        if not runs_root.exists():
+            raise FileNotFoundError(
+                f"No runs found under {runs_root}. Provide --runid to evaluate a specific run."
+            )
+
+        candidates = sorted(
+            (p for p in runs_root.iterdir() if p.is_dir()),
+            key=lambda p: p.name,
+            reverse=True,
+        )
+        model_filename = cfg.paths.model_filename
+        selected = next((p for p in candidates if (p / model_filename).exists()), None)
+        if selected is None:
+            raise FileNotFoundError(
+                f"Could not find any run in {runs_root} containing {model_filename}."
+            )
+
+        cfg.paths.run_id = selected.name
+
+    new_run_root = cfg.paths.run_root
+    if initial_run_root != new_run_root and initial_run_root.exists():
+        try:
+            initial_run_root.rmdir()
+        except OSError:
+            pass
+
     logger = SidLogger(name=f"{args.task}-eval", log_dir=cfg.paths.log_path)
+    if args.runid is None:
+        logger.info(
+            f"--runid not provided; evaluating latest run {cfg.paths.run_id} from {cfg.paths.run_root}"
+        )
+
     if args.task == cfg.Task.CLASSIFICATION:
         ClassificationEvaluator(cfg, logger).run()
     elif args.task == cfg.Task.SEGMENTATION:

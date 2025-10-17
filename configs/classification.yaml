@@ -1,11 +1,31 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 100000
-  val_samples: 20000
-  test_samples: 8000
+  train_samples: 1000
+  val_samples: 100
+  test_samples: 100
   use_streaming: false
   use_disk_cache: true
+  augment:
+    enable: true
+    random_resized_crop: true
+    scale_min: 0.7
+    scale_max: 1.0
+    horizontal_flip_prob: 0.5
+    color_jitter_brightness: 0.2
+    color_jitter_contrast: 0.2
+    color_jitter_saturation: 0.1
+    color_jitter_hue: 0.02
+    gaussian_blur_prob: 0.1
+    gaussian_blur_sigma_min: 0.1
+    gaussian_blur_sigma_max: 2.0
+    random_erasing_prob: 0.1
+    random_erasing_scale_min: 0.02
+    random_erasing_scale_max: 0.2
+    random_erasing_ratio_min: 0.3
+    random_erasing_ratio_max: 3.3
+    preview_samples: 8
+    preview_seed: 1234
 
 loader:
   batch_size: 32
@@ -29,7 +49,7 @@ model:
     - 0.225
 
 training:
-  epochs: 50
+  epochs: 10
   learning_rate: 0.0005
   seed: 42
   device: cuda
