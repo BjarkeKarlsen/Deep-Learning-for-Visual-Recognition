@@ -1,24 +1,24 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 1000
-  val_samples: 100
-  test_samples: 100
+  train_samples: 5000
+  val_samples: 800
+  test_samples: 800
   use_streaming: false
   use_disk_cache: true
   augment:
-    enable: false
-    random_resized_crop: false
-    scale_min: 0.9
-    scale_max: 1.0
+    enable: true
+    random_resized_crop: true
+    scale_min: 0.8
+    scale_max: 1.2
     horizontal_flip_prob: 0.5
-    color_jitter_brightness: 0.0
-    color_jitter_contrast: 0.0
-    color_jitter_saturation: 0.0
-    color_jitter_hue: 0.0
-    gaussian_blur_prob: 0.0
+    color_jitter_brightness: 0.1
+    color_jitter_contrast: 0.1
+    color_jitter_saturation: 0.1
+    color_jitter_hue: 0.02
+    gaussian_blur_prob: 0.1
     gaussian_blur_sigma_min: 0.1
-    gaussian_blur_sigma_max: 2.0
+    gaussian_blur_sigma_max: 1.5
     random_erasing_prob: 0.0
     random_erasing_scale_min: 0.02
     random_erasing_scale_max: 0.2
@@ -28,7 +28,7 @@ data:
     preview_seed: 1234
 
 loader:
-  batch_size: 24
+  batch_size: 16
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
@@ -46,8 +46,8 @@ model:
     - 0.225
 
 training:
-  epochs: 10
-  learning_rate: 0.0003
+  epochs: 20
+  learning_rate: 0.0005
   seed: 42
   checkpoint_frequency: 5               
   keep_checkpoints: 3          
@@ -57,6 +57,13 @@ training:
     betas:
       - 0.9
       - 0.95
+  scheduler:
+    name: "cosine"
+    t_max: 20
+    max_lr: 0.0
+    pct_start: 0.0
+    div_factor: 25.0
+    final_div_factor: 10000.0
 
 paths:
   base: outputs
