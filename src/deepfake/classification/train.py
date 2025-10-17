@@ -111,7 +111,7 @@ class Trainer:
                 self.scheduler.step()
 
             base_step += batch_count
-            current_lr = self.optimizer.param_groups[0]['lr']
+            current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
 
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,

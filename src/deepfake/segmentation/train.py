@@ -98,7 +98,7 @@ class Trainer:
                 self.scheduler.step()
 
             base_step += steps_this_epoch
-            current_lr = self.optimizer.param_groups[0]['lr']
+            current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
 
             # RECORD METRICS
             self.metrics_tracker.add_metrics(TrainingMetrics(

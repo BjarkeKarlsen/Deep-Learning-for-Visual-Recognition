@@ -28,7 +28,7 @@ data:
     preview_seed: 1234
 
 loader:
-  batch_size: 64
+  batch_size: 128
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
