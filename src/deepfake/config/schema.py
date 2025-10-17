@@ -66,6 +66,15 @@ class OptimizerConfig:
     nesterov: bool = False
 
 @dataclass
+class SchedulerConfig:
+    name: str = ""
+    t_max: int = 0
+    max_lr: float = 0.0
+    pct_start: float = 0.3
+    div_factor: float = 25.0
+    final_div_factor: float = 10000.0
+
+@dataclass
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
@@ -73,7 +82,11 @@ class TrainingConfig:
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     checkpoint_frequency: int = 5                # checkpoint frequency
     keep_checkpoints: int = 3             # retention policy
+    label_smoothing: float = 0.0
+    grad_clip_norm: float = 0.0
+    ema_decay: float = 0.0
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 @dataclass
 class PathsConfig:

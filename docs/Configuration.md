@@ -21,7 +21,6 @@ Controls dataset selection and sampling.
 | `val_samples` | int | `10` | Max validation samples. |
 | `test_samples` | int | `10` | Max test samples. |
 | `use_streaming` | bool | `true` | Stream data from HF (requires explicit sample caps). |
-| `use_streaming` | bool | `true` | Stream data from HF (requires explicit sample caps). |
 | `use_disk_cache` | bool | `true` | Cache derived splits on disk for reuse. |
 | `augment.enable` | bool | `false` | Toggle training-time augmentation for classification dataloaders. |
 | `augment.random_resized_crop` | bool | `true` | Use random resized crop instead of a plain resize when augmentations are enabled. |
@@ -72,6 +71,9 @@ Hyperparameters shared across tasks.
 | `seed` | int | `42` | Global RNG seed. |
 | `device` | str | Auto-set (`"cuda"` if available, else `"cpu"`). Override only when needed. |
 | `checkpoint_frequency` | int | `5` | Create a checkpoint every N epochs. |
+| `label_smoothing` | float | `0.0` | Apply label smoothing to cross-entropy (classification). |
+| `grad_clip_norm` | float | `0.0` | Clip gradients to this L2 norm (0 disables clipping). |
+| `ema_decay` | float | `0.0` | Exponential moving-average decay for model weights (0 disables). |
 | `optimizer` | mapping | see below | Configure the optimiser family and hyperparameters. |
 
 ### `training.optimizer`
@@ -93,6 +95,16 @@ training:
     weight_decay: 0.01
     betas: [0.9, 0.95]
 ```
+
+### `training.scheduler`
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `name` | str | `""` | Supported values: `""` (disabled), `"cosine"`, `"onecycle"`. |
+| `t_max` | int | `0` | Override `T_max` for cosine annealing (defaults to `epochs`). |
+| `max_lr` | float | `0.0` | Peak LR for OneCycle (defaults to `learning_rate`). |
+| `pct_start` | float | `0.3` | Warm-up fraction for OneCycle. |
+| `div_factor` | float | `25.0` | Initial LR divisor for OneCycle. |
+| `final_div_factor` | float | `10000.0` | Final LR divisor for OneCycle. |
 
 ---
 

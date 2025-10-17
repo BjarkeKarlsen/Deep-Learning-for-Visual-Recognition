@@ -6,6 +6,7 @@ from .schema import (
     PathsConfig,
     TrainingConfig,
     AugmentationConfig,
+    SchedulerConfig,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "PathsConfig",
     "TrainingConfig",
     "AugmentationConfig",
+    "SchedulerConfig",
 ]

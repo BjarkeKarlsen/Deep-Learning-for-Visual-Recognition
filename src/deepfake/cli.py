@@ -111,6 +111,10 @@ def run_train(cfg: Config, args):
             logger.warning(f"Checkpoint epoch {resume_epoch} missing model state; continuing with current weights")
         if not checkpoint_data.get('optimizer_loaded'):
             logger.warning(f"Checkpoint epoch {resume_epoch} missing optimizer state; optimizer reinitialised")
+        if getattr(trainer, 'load_ema_state', None):
+            checkpoint_dir = checkpoint_data.get('checkpoint_dir')
+            if checkpoint_dir is not None:
+                trainer.load_ema_state(Path(checkpoint_dir) / 'ema_state.pth')
 
     trainer.train(start_epoch=start_epoch)
 

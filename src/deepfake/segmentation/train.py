@@ -5,6 +5,7 @@ from typing import Dict, Any
 
 import torch
 import torch.nn as nn
+from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets import DownloadMode
@@ -19,6 +20,7 @@ from deepfake.segmentation.model import TamperSegmentationModel
 from deepfake.utils.optimizer_factory import OptimizerFactory
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
+from deepfake.utils.scheduler_factory import SchedulerFactory
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 from .dice_coefficient import dice_coefficient
 
@@ -45,6 +47,8 @@ class Trainer:
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.scaler = GradScaler()
+        self.scheduler = None
+        self.scheduler_step_mode = "epoch"
 
         # Persister, metrics, checkpoint
         self.persister = persister or TorchModelPersister()
@@ -60,6 +64,18 @@ class Trainer:
         
         # LOAD THE DATA
         train_loader, val_loader = self._load_data()
+
+        try:
+            steps_per_epoch = len(train_loader)
+        except (TypeError, AttributeError):
+            steps_per_epoch = 0
+        self.scheduler, self.scheduler_step_mode = SchedulerFactory.create(
+            self.optimizer,
+            self.cfg.training,
+            steps_per_epoch=steps_per_epoch,
+        )
+        if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
+            self.scheduler.last_epoch = start_epoch - 1
 
         # START TRAINING
         self.metrics_tracker.start_training()
@@ -101,13 +117,20 @@ class Trainer:
 
 
             # CHECKPOINT
-            self.checkpoint_mgr.create_checkpoint(
+            checkpoint_dir = self.checkpoint_mgr.create_checkpoint(
                 epoch=epoch + 1,
                 model=self.model,
                 optimizer=self.optimizer,
                 metrics_tracker=self.metrics_tracker,
                 config=self.cfg,
             )
+            if self.scheduler and self.scheduler_step_mode == "epoch":
+                self.scheduler.step()
+
+            if self.scheduler:
+                current_lr = self.optimizer.param_groups[0]['lr']
+                if self.metrics_tracker.metrics:
+                    self.metrics_tracker.metrics[-1].learning_rate = current_lr
 
         # Finish
         self.metrics_tracker.end_training()
@@ -145,9 +168,15 @@ class Trainer:
             
             # SCALE LOSS AND BACKWARD FOR STABLE MIXED-PRECISION TRAINING    
             self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+            clip_norm = getattr(self.cfg.training, "grad_clip_norm", 0.0)
+            if clip_norm and clip_norm > 0:
+                clip_grad_norm_(self.model.parameters(), clip_norm)
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            
+            if self.scheduler and self.scheduler_step_mode == "batch":
+                self.scheduler.step()
+
             # UPDATE TRAINING METRICS
             train_loss += loss.item()
             train_dice += dice_coefficient(logits, masks).item()

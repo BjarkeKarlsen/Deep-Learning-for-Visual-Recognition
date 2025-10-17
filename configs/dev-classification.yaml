@@ -54,6 +54,9 @@ training:
   seed: 42
   checkpoint_frequency: 5
   keep_checkpoints: 3
+  label_smoothing: 0.0
+  grad_clip_norm: 0.0
+  ema_decay: 0.0
   optimizer:
     name: adamw
     weight_decay: 0.01
