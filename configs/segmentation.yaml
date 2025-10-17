@@ -1,9 +1,9 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 5000
-  val_samples: 1000
-  test_samples: 1000
+  train_samples: 100000
+  val_samples: 10000
+  test_samples: 10000
   use_streaming: false
   use_disk_cache: true
   augment:
@@ -48,11 +48,12 @@ model:
     - 0.225
 
 training:
-  epochs: 20
-  learning_rate: 0.0005
+  epochs: 40
+  learning_rate: 0.001
   seed: 42
   checkpoint_frequency: 5               
   keep_checkpoints: 3          
+  grad_clip_norm: 1.0
   optimizer:
     name: adamw
     weight_decay: 0.01
@@ -60,10 +61,10 @@ training:
       - 0.9
       - 0.95
   scheduler:
-    name: "cosine"
-    t_max: 20
-    max_lr: 0.0
-    pct_start: 0.0
+    name: "onecycle"
+    t_max: 0
+    max_lr: 0.003
+    pct_start: 0.15
     div_factor: 25.0
     final_div_factor: 10000.0
 
