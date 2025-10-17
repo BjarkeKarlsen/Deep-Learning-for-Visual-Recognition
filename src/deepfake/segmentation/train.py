@@ -274,6 +274,16 @@ class Trainer:
             max_samples=self.cfg.data.val_samples,
             filter_fn=DatasetFilters.tampered_with_masks
         )
+        num_workers = self.cfg.loader.num_workers if not self.cfg.data.use_streaming else 0
+        loader_common_kwargs = {
+            "batch_size": self.cfg.loader.batch_size,
+            "num_workers": num_workers,
+            "pin_memory": torch.cuda.is_available(),
+        }
+        if num_workers > 0:
+            loader_common_kwargs["prefetch_factor"] = self.cfg.loader.prefetch_factor
+            loader_common_kwargs["persistent_workers"] = self.cfg.loader.persistent_workers
+
         train_loader = DataLoader(
             SIDClassificationDataset(train_ds, image_size=self.cfg.data.image_size,
                                      normalize_mean=self.cfg.model.normalize_mean,
@@ -282,10 +292,8 @@ class Trainer:
                                      transform_mask=train_mask_tf,
                                      joint_transform=train_joint_tf,
                                      return_mask=True),
-            batch_size=self.cfg.loader.batch_size,
             shuffle=not self.cfg.data.use_streaming and self.cfg.loader.shuffle_train,
-            num_workers=0 if self.cfg.data.use_streaming else self.cfg.loader.num_workers,
-            pin_memory=torch.cuda.is_available(),
+            **loader_common_kwargs,
         )
         val_loader = DataLoader(
             SIDClassificationDataset(val_ds, image_size=self.cfg.data.image_size,
@@ -295,10 +303,8 @@ class Trainer:
                                      transform_mask=val_mask_tf,
                                      joint_transform=val_joint_tf,
                                      return_mask=True),
-            batch_size=self.cfg.loader.batch_size,
             shuffle=False,
-            num_workers=0 if self.cfg.data.use_streaming else self.cfg.loader.num_workers,
-            pin_memory=torch.cuda.is_available(),
+            **loader_common_kwargs,
         )
         return train_loader, val_loader
 

@@ -44,6 +44,8 @@ class LoaderConfig:
     shuffle_val: bool = False
     shuffle_test: bool = False
     num_workers: int = 4
+    prefetch_factor: int = 2
+    persistent_workers: bool = False
 
 @dataclass
 class ModelConfig:

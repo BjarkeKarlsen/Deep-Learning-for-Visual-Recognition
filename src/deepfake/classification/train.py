@@ -352,6 +352,16 @@ class Trainer:
         )
         
 
+        num_workers = cfg.loader.num_workers if not cfg.data.use_streaming else 0
+        loader_common_kwargs = {
+            "batch_size": cfg.loader.batch_size,
+            "num_workers": num_workers,
+            "pin_memory": torch.cuda.is_available(),
+        }
+        if num_workers > 0:
+            loader_common_kwargs["prefetch_factor"] = cfg.loader.prefetch_factor
+            loader_common_kwargs["persistent_workers"] = cfg.loader.persistent_workers
+
         train_loader = DataLoader(
             SIDClassificationDataset(
                 train_ds,
@@ -362,10 +372,8 @@ class Trainer:
                 max_samples=cfg.data.train_samples,
                 return_label=True,
             ),
-            batch_size=cfg.loader.batch_size,
             shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
-            num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0, # Multiprocessing with streaming datasets is not supported
-            pin_memory=torch.cuda.is_available(),
+            **loader_common_kwargs,
         )
 
         val_loader = DataLoader(
@@ -378,10 +386,8 @@ class Trainer:
                 max_samples=cfg.data.val_samples,
                 return_label=True,
             ),
-            batch_size=cfg.loader.batch_size,
             shuffle=False,
-            num_workers=cfg.loader.num_workers if not cfg.data.use_streaming else 0,
-            pin_memory=torch.cuda.is_available(),
+            **loader_common_kwargs,
         )
     
         return train_loader, val_loader
