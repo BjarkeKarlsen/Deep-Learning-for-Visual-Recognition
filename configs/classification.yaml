@@ -1,9 +1,9 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 224
-  train_samples: 1000
-  val_samples: 100
-  test_samples: 100
+  train_samples: 20000
+  val_samples: 5000
+  test_samples: 5000
   use_streaming: false
   use_disk_cache: true
   augment:
@@ -12,23 +12,23 @@ data:
     scale_min: 0.7
     scale_max: 1.0
     horizontal_flip_prob: 0.5
-    color_jitter_brightness: 0.2
-    color_jitter_contrast: 0.2
-    color_jitter_saturation: 0.1
+    color_jitter_brightness: 0.3
+    color_jitter_contrast: 0.3
+    color_jitter_saturation: 0.2
     color_jitter_hue: 0.02
-    gaussian_blur_prob: 0.1
+    gaussian_blur_prob: 0.2
     gaussian_blur_sigma_min: 0.1
     gaussian_blur_sigma_max: 2.0
-    random_erasing_prob: 0
+    random_erasing_prob: 0.1
     random_erasing_scale_min: 0.02
     random_erasing_scale_max: 0.2
     random_erasing_ratio_min: 0.3
     random_erasing_ratio_max: 3.3
-    preview_samples: 24
+    preview_samples: 32
     preview_seed: 1234
 
 loader:
-  batch_size: 32
+  batch_size: 64
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
@@ -49,21 +49,28 @@ model:
     - 0.225
 
 training:
-  epochs: 10
-  learning_rate: 0.0005
+  epochs: 30
+  learning_rate: 0.001
   seed: 42
   device: cuda
   checkpoint_frequency: 5
   keep_checkpoints: 3
-  label_smoothing: 0.05
+  label_smoothing: 0.1
   grad_clip_norm: 1.0
-  ema_decay: 0.999
+  ema_decay: 0.9995
   optimizer:
     name: adamw
     weight_decay: 0.01
     betas:
       - 0.9
       - 0.95
+  scheduler:
+    name: "onecycle"
+    t_max: 0
+    max_lr: 0.003
+    pct_start: 0.2
+    div_factor: 25.0
+    final_div_factor: 10000.0
 
 paths:
   base: outputs
