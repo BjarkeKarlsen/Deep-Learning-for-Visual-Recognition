@@ -5,6 +5,7 @@ class SeedManager:
     """Keep Python, NumPy, and PyTorch RNGs aligned for reproducible pipelines."""
 
     def __init__(self, seed=42):
+        # APPLY THE PROVIDED SEED AS SOON AS THE MANAGER IS CREATED.
         self.set_seed(seed)
 
     def set_seed(self, seed):

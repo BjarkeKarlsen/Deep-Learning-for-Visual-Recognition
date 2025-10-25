@@ -21,6 +21,7 @@ class TorchModelPersister(IModelPersister):
     
     def save_model(self, model: torch.nn.Module, path: str, 
                   optimizer: Optional[torch.optim.Optimizer] = None, **kwargs) -> str:
+        # SERIALISE MODEL (AND OPTIONAL OPTIMISER) TO THE PROVIDED PATH.
         """Save PyTorch model with optional optimizer state"""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         

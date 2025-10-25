@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 @dataclass
 class BaseEvaluationMetrics(ABC):
     """Base class for all evaluation metrics"""
+    # SHARED FIELDS FOR CLASSIFICATION AND SEGMENTATION EVAL SUMMARIES.
     task_type: str
     primary_metric: str
     primary_score: float
@@ -43,6 +44,7 @@ class BaseEvaluationMetrics(ABC):
 @dataclass
 class ClassificationEvaluationMetrics(BaseEvaluationMetrics):
     """Classification-specific evaluation metrics"""
+    # STORES CLASSIFICATION ACCURACY PLUS SKLEARN REPORT ARTIFACTS.
     accuracy: float = 0.0
     classification_report: Dict[str, Any] = field(default_factory=dict)
     confusion_matrix: List[List[int]] = field(default_factory=list)
@@ -76,6 +78,7 @@ class ClassificationEvaluationMetrics(BaseEvaluationMetrics):
 @dataclass
 class SegmentationEvaluationMetrics(BaseEvaluationMetrics):
     """Segmentation-specific evaluation metrics"""
+    # STORES SEGMENTATION DICE/IOU SCORES AND OPTIONAL PER-CLASS DETAILS.
     mean_iou: float = 0.0
     pixel_accuracy: float = 0.0
     dice_coefficient: float = 0.0
@@ -155,6 +158,7 @@ class EvaluationMetricsTracker(IEvaluationTracker, Generic[T]):
             raise TypeError(f"Expected {self.metric_type.__name__}, got {type(metrics).__name__}")
         
         with self.lock:
+            # APPEND LATEST EVALUATION RESULTS TO THE HISTORY LIST.
             self.metrics_history.append(metrics)
             self.logger.info(f"Added {metrics.task_type} metrics: {metrics.primary_metric}={metrics.primary_score}")
     

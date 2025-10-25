@@ -31,6 +31,7 @@ def make_parser():
     # Shared options
     def add_common_args(p):
         """ADD COMMON TASK/ENV/ID/CHECKPOINT ARGS TO SUBPARSER."""
+        # ENSURE EVERY SUBCOMMAND UNDERSTANDS TASK, ENV, RUN, AND RESUME FLAGS.
         p.add_argument("--task",   choices=["classification","segmentation"], required=True)
         p.add_argument("--env",    choices=["dev","test"], default="dev")
         p.add_argument("--runid",  type=str, help="Run ID (for eval/plot)")

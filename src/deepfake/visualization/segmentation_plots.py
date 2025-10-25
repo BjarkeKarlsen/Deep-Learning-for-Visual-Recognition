@@ -19,6 +19,7 @@ class SegmentationPlots(CommonPlots):
             self.eval_report = self.load_evaluation_report(eval_history_path)
         else:
             self.eval_report = None
+        # STORE OPTIONAL HISTORY AND EVAL REPORT REFERENCES FOR LATER PLOTS.
 
     def plot_segmentation(self, image: np.ndarray, true_mask: np.ndarray, pred_mask: np.ndarray, 
                          filename: Optional[str] = None, save_path: Optional[str] = None) -> None:
@@ -205,6 +206,7 @@ class SegmentationPlots(CommonPlots):
         Returns:
             Image with mask overlay
         """
+        # BLEND MASK INTO THE IMAGE USING THE REQUESTED COLOUR AND ALPHA.
         # Ensure uint8 [0..255]
         img = (image * 255).astype(np.uint8) if image.dtype != np.uint8 else image.copy()
         
