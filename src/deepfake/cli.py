@@ -21,6 +21,7 @@ from deepfake.utils.tuner import run_tuning, DEFAULT_STORAGE
 
 def make_parser():
     """CREATE ARGUMENT PARSER AND DEFINE SUBCOMMANDS."""
+    # BUILDS THE CLI SURFACE THAT ADVERTISES TRAIN, EVAL, PLOT, AND TUNE COMMANDS.
     parser = argparse.ArgumentParser(
         prog="deepfake",
         description="Deepfake Detection Toolkit",
@@ -75,6 +76,7 @@ def build_config_path(task: str, env: str) -> str:
 
 def run_train(cfg: Config, args):
     """SET UP LOGGER, METRICS, CHECKPOINT MANAGER, AND DISPATCH TRAINER."""
+    # PREPARES TRAINING UTILITIES THEN DELEGATES TO THE CHOSEN TASK TRAINER.
     logger = SidLogger(name=f"{args.task}-train", log_dir=cfg.paths.log_path)
     metrics_tracker = TrainingMetricsTracker(logger=logger.logger)
     metrics_tracker.configure_backup(cfg.paths.history_path)
@@ -86,6 +88,7 @@ def run_train(cfg: Config, args):
     )
 
     # determine start_epoch
+    # HANDLE CHECKPOINT RESUME WHEN REQUESTED BY THE USER.
     start_epoch = 0
     resume_epoch = None
     if args.checkpoint is not None:
@@ -133,6 +136,7 @@ def run_train(cfg: Config, args):
 
 def run_eval(cfg: Config, args):
     """Dispatch evaluation based on task, defaulting to the latest trained run when --runid is omitted."""
+    # FINDS THE TARGET RUN FOLDER THEN EXECUTES THE APPROPRIATE EVALUATOR.
     initial_run_root = cfg.paths.run_root
 
     if args.runid:
@@ -178,6 +182,7 @@ def run_eval(cfg: Config, args):
 
 
 def _resolve_run_for_stage(cfg: Config, required_file: str) -> Path:
+    # LOCATES A RUN THAT CONTAINS THE REQUESTED METRICS OR HISTORY FILE.
     initial_run_root = cfg.paths.run_root
     if cfg.paths.run_id and (initial_run_root / required_file).exists():
         return initial_run_root
@@ -204,6 +209,7 @@ def _resolve_run_for_stage(cfg: Config, required_file: str) -> Path:
 
 def run_plot(cfg: Config, args):
     """Dispatch plotting based on task and stage, defaulting to the latest run when --runid is omitted."""
+    # IDENTIFIES THE RUN TO VISUALISE AND TRIGGERS THE CORRESPONDING PLOTS.
     if args.runid:
         cfg.paths.run_id = args.runid
 
@@ -240,6 +246,7 @@ def run_plot(cfg: Config, args):
 
 def run_tune(args):
     """Execute an Optuna-based hyperparameter sweep."""
+    # WRAPS OPTUNA STUDIES SO CLI USERS CAN LAUNCH TUNING EXPERIMENTS.
     study = run_tuning(
         task=args.task,
         env=args.env,

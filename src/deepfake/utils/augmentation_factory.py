@@ -26,6 +26,7 @@ from deepfake.config.schema import AugmentationConfig
 
 class SegmentationJointTransform:
     """Apply paired geometric transforms to image/mask samples."""
+    # KEEPS IMAGE AND MASK AUGMENTATIONS IN LOCKSTEP FOR SEGMENTATION TASKS.
 
     def __init__(
         self,
@@ -39,6 +40,7 @@ class SegmentationJointTransform:
         self.is_train = is_train
 
     def _resize_pair(self, image, mask):
+        # RESIZE BOTH IMAGE AND MASK TO THE TARGET RESOLUTION.
         resized_image = F.resize(
             image,
             [self.image_size, self.image_size],
@@ -96,6 +98,7 @@ class SegmentationJointTransform:
 
 
 def _build_common_tail(normalize_mean, normalize_std, augment_cfg: AugmentationConfig | None) -> list:
+    # SHARED POST-PROCESSING TO CONVERT PIL INPUTS INTO NORMALISED TENSORS.
     ops = [
         ToImage(),
         ToDtype(torch.float32, scale=True),
@@ -121,6 +124,7 @@ def build_classification_transform(
     is_train: bool = False,
 ):
     """Return a torchvision.v2 Compose for classification samples."""
+    # BUILDS THE IMAGE-ONLY PIPELINE USED BY THE CLASSIFIER.
     ops = []
 
     if augment_cfg and augment_cfg.enable and is_train:
@@ -194,6 +198,7 @@ def build_segmentation_transforms(
     ops to each; the image/mask transforms finalise tensor conversion.
     """
 
+    # CREATE MATCHED TRANSFORMS FOR IMAGE, MASK, AND JOINT AUGMENTATIONS.
     joint_transform = SegmentationJointTransform(
         image_size=image_size,
         augment_cfg=augment_cfg,

@@ -25,6 +25,7 @@ class Evaluator:
     """
     Runs segmentation inference, records Dice/IoU metrics, and generates gallery and plots.
     """
+    # DRIVES SEGMENTATION EVALUATION, SUMMARY METRICS, AND VISUAL OUTPUTS.
 
     def __init__(
         self,
@@ -36,7 +37,8 @@ class Evaluator:
         self.logger = logger
         self.device = torch.device(cfg.training.device)
 
-        # Dataset & DataLoader
+        # DATASET & DATALOADER
+        # BUILD TEST SPLIT WITH TAMPERED MASKS AND MATCHED TRANSFORMS.
         manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -73,13 +75,15 @@ class Evaluator:
             pin_memory=torch.cuda.is_available(),
         )
 
-        # Metrics tracker
+        # METRICS TRACKER
+        # CAPTURES DICE/IOU HISTORY FOR SAVING AND PLOTTING.
         self.metrics_tracker = EvaluationMetricsTracker(
             SegmentationEvaluationMetrics,
             logger=logger,
         )
 
-        # Model
+        # MODEL
+        # RESTORE BEST CHECKPOINTED WEIGHTS BEFORE INFERENCE.
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.persister = persister or TorchModelPersister()
         self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
@@ -88,6 +92,7 @@ class Evaluator:
     def run(self):
         """Full evaluation pipeline."""
         self.logger.log_evaluation_config(asdict(self.cfg))
+        # PIPELINE: INFER ON TEST SET, SUMMARISE SCORES, THEN PRODUCE PLOTS.
         dice_scores, iou_scores, gallery = self.infer()
         self.compute_and_log(dice_scores, iou_scores)
         self.save_and_plot(gallery)
@@ -104,6 +109,7 @@ class Evaluator:
         self.logger.info("Starting segmentation evaluation")
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Eval"):
+                # GATHER DICE AND IOU FOR EACH MINI-BATCH AND BUILD GALLERY SAMPLES.
                 images = batch["image"].to(self.device)
                 masks = batch["mask"].to(self.device)
                 logits = self.model(images)

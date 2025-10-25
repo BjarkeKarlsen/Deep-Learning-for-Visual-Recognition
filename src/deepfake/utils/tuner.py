@@ -26,6 +26,7 @@ DEFAULT_STORAGE = "sqlite:///optuna_study.db"
 
 
 def _build_base_config_path(task: str, env: str) -> Path:
+    # LOCATE A CONFIG TEMPLATE THAT MATCHES THE REQUESTED TASK AND ENV.
     candidate_names = [
         f"{env}-{task}.yaml",
         f"{env}-{task}-smoke.yaml",
@@ -42,6 +43,7 @@ def _build_base_config_path(task: str, env: str) -> Path:
 
 
 def _load_best_metric(run_root: Path, task: str) -> float:
+    # EXTRACT THE BEST VALIDATION SCORE FROM A COMPLETED RUN DIRECTORY.
     history_path = run_root / "history.json"
     if not history_path.exists():
         raise FileNotFoundError(f"Did not find history.json in {run_root}")
@@ -70,6 +72,7 @@ def _load_best_metric(run_root: Path, task: str) -> float:
 
 
 def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
+    # DEFINE SEARCH SPACE FOR CLASSIFICATION EXPERIMENTS.
     return {
         "training": {
             "learning_rate": trial.suggest_float("base_lr", 5e-5, 5e-4, log=True),
@@ -95,6 +98,7 @@ def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
 
 
 def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
+    # DEFINE SEARCH SPACE FOR SEGMENTATION EXPERIMENTS.
     return {
         "training": {
             "learning_rate": trial.suggest_float("base_lr", 5e-4, 2e-3, log=True),
@@ -117,6 +121,7 @@ def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
 
 
 def _build_config(base_cfg_path: Path, overrides: Dict[str, Any], device_override: Optional[str]) -> ConfigSchema:
+    # MERGE BASE CONFIG WITH TRIAL OVERRIDES AND OPTIONAL DEVICE HINT.
     base_struct = OmegaConf.structured(ConfigSchema)
     base_cfg = OmegaConf.load(base_cfg_path)
     override_conf = OmegaConf.create(overrides)
@@ -155,6 +160,7 @@ def run_tuning(
     )
 
     def objective(trial: Trial) -> float:
+        # TRAIN A SINGLE TRIAL AND REPORT THE VALIDATION METRIC TO OPTUNA.
         overrides = (
             _sample_params_classification(trial)
             if task == "classification"

@@ -30,6 +30,7 @@ from .model import BaselineClassifier
 
 
 class Trainer:
+    # MANAGES CLASSIFICATION TRAINING, CHECKPOINTS, AND LOGGING FOR ONE RUN.
     def __init__(
         self,
         cfg: Config,
@@ -40,15 +41,14 @@ class Trainer:
     ):
         self.cfg = cfg
         self.device = torch.device(cfg.training.device)
-        # Bookkeeping surfaces: logs, metrics, checkpoints
+        # SHARED UTILITIES TRACK LOGS, METRIC HISTORY, AND CHECKPOINT SNAPSHOTS.
         self.logger = logger
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
         self.persister = persister or TorchModelPersister()
         
         
-        # Model, optimizer, criterion, scaler
-        # Core optimisation components
+        # CORE OPTIMISATION COMPONENTS FOR THE CLASSIFIER.
         self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=getattr(cfg.training, "label_smoothing", 0.0))
@@ -66,7 +66,7 @@ class Trainer:
             )
             self.ema_model.to(self.device)
 
-        # Load best model if exists
+        # WARM-START FROM A PREVIOUSLY SAVED BEST MODEL WHEN AVAILABLE.
         if os.path.isfile(cfg.paths.model_path):
             self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
             self.logger.info(f"Loaded best model from {cfg.paths.model_path}")       
@@ -78,7 +78,7 @@ class Trainer:
         prev_best = None
         prev_best_val = float('-inf')
         
-        # LOAD THE DATA
+        # MATERIALISE TRAIN AND VALIDATION LOADERS BASED ON THE CONFIG.
         train_loader, val_loader = self._load_data(self.cfg)
 
         try:
@@ -94,11 +94,11 @@ class Trainer:
         if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
             self.scheduler.last_epoch = start_epoch - 1
 
-        # START TRAINING
+        # START METRIC TRACKING SO TIMINGS AND HISTORY ARE RECORDED.
         self.metrics_tracker.start_training()
         base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
-        # Main training loop: fit, validate, log, checkpoint
+        # MAIN EPOCH LOOP: TRAIN, EVALUATE, LOG, AND SAVE CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
             train_acc, avg_train_loss, batch_count = self._train_epoch(train_loader, epoch)
             eval_model = self.ema_model.module if self.ema_model is not None else self.model
@@ -113,6 +113,7 @@ class Trainer:
             base_step += batch_count
             current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
 
+            # UPDATE METRIC HISTORY WITH THE LATEST SNAPSHOT.
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
                 step=base_step,
@@ -150,7 +151,7 @@ class Trainer:
             if checkpoint_dir and self.ema_model is not None:
                 torch.save(self.ema_model.state_dict(), checkpoint_dir / "ema_state.pth")
 
-        # FINISH
+        # FINALISE METRIC STORAGE AFTER THE LOOP COMPLETES.
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
 
@@ -167,7 +168,7 @@ class Trainer:
             best_epoch=best_epoch,
         )
 
-        # PLOT
+        # RENDER QUICKLOOK PLOTS FOR LOSS, ACCURACY, AND LR.
         plotter = ClassificationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
         plotter.plot_training_history()
         plotter.plot_learning_rate_schedule()
@@ -181,8 +182,10 @@ class Trainer:
         train_total = 0
         batch_count = 0
 
+        # PROGRESS BAR SHOWS MINI-BATCH STATUS FOR THE CURRENT EPOCH.
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}")
         for batch in pbar:
+            # FORWARD AND BACKWARD PASS FOR A SINGLE MINI-BATCH.
             images = batch["image"].to(self.device)
             labels = batch["label"].to(self.device)
             batch_count += 1
@@ -222,12 +225,14 @@ class Trainer:
     @torch.no_grad() # Optimize memory usage and speed up computations
     def _evaluation(self, val_loader: DataLoader, model: Optional[nn.Module] = None):
         """Evaluate model (EMA if provided) without gradient tracking."""
+        # RUN A FULL VALIDATION SWEEP TO MEASURE GENERALISATION.
         eval_model = model if model is not None else self.model
         eval_model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
 
         with torch.no_grad():
             for batch in val_loader:
+                # COLLECT VALIDATION LOSS AND ACCURACY FOR THIS MINI-BATCH.
                 images = batch["image"].to(self.device)
                 labels = batch["label"].to(self.device)
                 
@@ -262,6 +267,7 @@ class Trainer:
         if preview_samples <= 0:
             return
 
+        # RANDOMLY SAMPLE EXAMPLES TO VISUALISE AUGMENTED OUTPUTS.
         try:
             dataset_length = len(dataset)
         except TypeError:
@@ -284,6 +290,7 @@ class Trainer:
                 self.logger.warning(f'Failed to fetch sample {idx} for augmentation preview: {exc}')
                 continue
 
+            # APPLY THE SAME AUGMENTATION PIPELINE USED DURING TRAINING.
             raw_image = SIDClassificationDataset.to_rgb(example['image'])
             augmented = transform(raw_image)
             augmented_images.append(augmented)
@@ -306,6 +313,7 @@ class Trainer:
 
     def _model_for_export(self) -> nn.Module:
         """Prefer the EMA weights when exporting/saving."""
+        # GIVE PRIORITY TO EMA WEIGHTS WHEN THEY ARE AVAILABLE.
         return self.ema_model.module if self.ema_model is not None else self.model
 
     def load_ema_state(self, ema_path: Path) -> None:

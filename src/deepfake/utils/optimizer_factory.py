@@ -17,6 +17,7 @@ class OptimizerFactory:
     
         Supports `adam`, `adamw`, and `sgd`.
         """
+        # DISPATCH TO THE REQUESTED OPTIMISER WITH CONFIGURED HYPERPARAMETERS.
         opt_cfg = training_cfg.optimizer
         name = (opt_cfg.name or "adam").lower()
         lr = training_cfg.learning_rate
@@ -54,8 +55,8 @@ class OptimizerFactory:
         
     @staticmethod
     def _resolve_betas(opt_cfg: OptimizerConfig) -> tuple[float, float]:
+        # VALIDATE AND FORMAT ADAM-STYLE BETA COEFFICIENTS.
         betas = getattr(opt_cfg, "betas", None) or [0.9, 0.999]
         if len(betas) != 2:
             raise ValueError(f"Optimizer betas must contain exactly 2 values (got {len(betas)})")
         return float(betas[0]), float(betas[1])
-

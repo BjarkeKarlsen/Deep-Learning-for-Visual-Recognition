@@ -19,10 +19,12 @@ class SchedulerFactory:
     ) -> Tuple[Optional[torch.optim.lr_scheduler._LRScheduler], str]:
         """Return a scheduler and step granularity ("epoch" or "batch")."""
         name = (training_cfg.scheduler.name or "").lower()
+        # EXIT EARLY WHEN NO SCHEDULER IS REQUESTED.
         if not name or name == "none":
             return None, "epoch"
 
         if name == "cosine":
+            # STANDARD COSINE ANNEALING WITH OPTIONAL USER T_MAX.
             t_max = training_cfg.scheduler.t_max or max(training_cfg.epochs, 1)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer,
@@ -33,6 +35,7 @@ class SchedulerFactory:
         if name == "onecycle":
             if steps_per_epoch <= 0:
                 raise ValueError("steps_per_epoch must be positive for OneCycleLR")
+            # ONE CYCLE LR THAT STEPS EACH BATCH FOR SMOOTH ANNEALING.
             max_lr = training_cfg.scheduler.max_lr or training_cfg.learning_rate
             scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 optimizer,

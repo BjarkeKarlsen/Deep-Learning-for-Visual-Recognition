@@ -29,6 +29,7 @@ class Trainer:
     Class-based trainer for tamper segmentation with mixed precision,
     metrics tracking, checkpointing, and plotting.
     """
+    # COORDINATES SEGMENTATION TRAINING, LOGGING, AND CHECKPOINTING.
 
     def __init__(
         self,
@@ -39,12 +40,11 @@ class Trainer:
         persister: IModelPersister = None
     ):
         self.cfg = cfg
-        # Keep references to logging/metrics/checkpointing utilities
+        # KEEP REFERENCES TO LOGGING, METRICS, AND CHECKPOINT HELPERS.
         self.logger = logger
         self.device = torch.device(cfg.training.device)
 
-        # Model, loss, optimizer, scaler
-        # Segmentation model + optimisation primitives
+        # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
@@ -65,7 +65,7 @@ class Trainer:
         prev_best = None
         prev_best_val = float('-inf')
         
-        # LOAD THE DATA
+        # PREPARE LOADER PAIRS FILTERED TO TAMPERED SAMPLES WITH MASKS.
         train_loader, val_loader = self._load_data()
 
         try:
@@ -81,11 +81,11 @@ class Trainer:
         if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
             self.scheduler.last_epoch = start_epoch - 1
 
-        # START TRAINING
+        # START TRACKING TO CAPTURE TIMESTAMPS AND INITIAL HISTORY.
         self.metrics_tracker.start_training()
         base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
-        # Main training loop: optimise then validate
+        # MAIN LOOP HANDLES TRAINING STEPS, VALIDATION, AND CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
             avg_train_loss, avg_train_dice, steps_this_epoch = self._train_epoch(train_loader, epoch)
             avg_val_loss, avg_val_dice = self._evaluation(val_loader)
@@ -135,7 +135,7 @@ class Trainer:
                 config=self.cfg,
             )
 
-        # Finish
+        # WRAP UP BY PERSISTING THE COLLECTED TRAINING HISTORY.
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
 
@@ -155,7 +155,7 @@ class Trainer:
             best_epoch=best_epoch,
         )
         
-        # PLOT
+        # OUTPUT TRAINING CURVES FOR QUICK REVIEW OF PROGRESS.
         plotter = SegmentationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
         plotter.plot_training_history()
         plotter.plot_learning_rate_schedule()
@@ -170,6 +170,7 @@ class Trainer:
         # ITERATE OVER BATCHES WITH A PROGRESS BAR
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}")
         for batch in pbar:
+            # FETCH IMAGE AND MASK TENSORS FOR THIS MINI-BATCH.
             images = batch["image"].to(self.device)
             masks = batch["mask"].to(self.device)
             
@@ -220,6 +221,7 @@ class Trainer:
         
         with torch.no_grad():
             for batch in val_loader:
+                # RUN VALIDATION FORWARD PASS AND ACCUMULATE METRICS.
                 images = batch["image"].to(self.device)
                 masks = batch["mask"].to(self.device)
                 

@@ -9,6 +9,7 @@ SplitType = Literal["train", "validation", "test"]
 
 
 class SIDDatasetManager:
+    # CENTRALISES DATASET LOADING, STREAMING HANDLING, AND SPLIT FILTERING.
     def __init__(
         self,
         dataset_name: str,
@@ -40,7 +41,7 @@ class SIDDatasetManager:
           - derive from 'validation' if val_offset > 0
           - derive from 'train' if val_offset == 0 and test_offset >= 0
         """
-        # If filtering, load extra samples to account for post-filter drop-off
+        # ESTIMATE HOW MANY SAMPLES TO PRELOAD WHEN FILTERING.
         filter_multiplier = 4
         if max_samples is None:
             load_n = None
@@ -49,7 +50,7 @@ class SIDDatasetManager:
         else:
             load_n = max_samples
         
-        # 1. Load raw split (streaming or non-streaming)
+        # STEP 1: LOAD THE REQUESTED BASE SPLIT.
         if split_type == TRAIN:
             ds = self._load_split(TRAIN, max_samples=load_n)
         elif split_type == VALIDATION:
@@ -65,7 +66,7 @@ class SIDDatasetManager:
         else:
             raise ValueError(f"Unknown split type: {split_type}")
         
-        # 2. If streaming, collect up to max_samples into a real Dataset
+        # STEP 2: MATERIALISE STREAMING SPLITS INTO MAP-STYLE DATASETS.
         if self.use_streaming:
             if load_n is None:
                 raise ValueError(
@@ -75,11 +76,11 @@ class SIDDatasetManager:
             ds = Dataset.from_list(list(ds))
             print(f"Converted streaming to HF Dataset with {len(ds)} samples")
         
-        # 3. If no filter or limit, return now
+        # STEP 3: RETURN EARLY IF NO FILTERING OR LIMITING IS NEEDED.
         if filter_fn is None and max_samples is None:
             return ds
 
-        # 4. Apply filter first
+        # STEP 4: APPLY OPTIONAL FILTERS BEFORE SLICING.
         if filter_fn:
             ds = self._filter_dataset(
                 dataset=ds,
@@ -89,7 +90,7 @@ class SIDDatasetManager:
             print(f"After filtering, {split_type} dataset size: {len(ds)}")
             
 
-        # 5. Apply max_samples slice
+        # STEP 5: SLICE DOWN TO THE REQUESTED SAMPLE COUNT.
         if max_samples is not None:
             ds = ds.select(range(min(max_samples, len(ds))))
             print(f"After slicing top {max_samples}, {split_type} size: {len(ds)}")
@@ -102,6 +103,7 @@ class SIDDatasetManager:
         *,
         max_samples: Optional[int] = None,
     ) -> Dataset:
+        # WRAPS load_dataset SO STREAMING AND NON-STREAMING MODES LOOK THE SAME.
         if not self.use_streaming:
             slice_str = f"{split}[:{max_samples or ''}]"
             print(f"Loading {self.dataset_name} split '{slice_str}' (non-streaming)...")
@@ -137,6 +139,7 @@ class SIDDatasetManager:
         is applied before slicing so the offset is measured on the filtered view.
         """
         if not use_test_or_val_as_test_set:
+            # BASE CASE: USE THE DEDICATED TEST SPLIT IF AVAILABLE.
             if self.use_streaming:
                 return self._collect_streaming_slice(
                     split=TEST,
@@ -162,6 +165,7 @@ class SIDDatasetManager:
 
         # Case 1: Derive from validation (if val_offset > 0)
         if val_offset > 0:
+            # USE VALIDATION TAIL AS TEST WHEN NO SEPARATE TEST SPLIT EXISTS.
             if self.use_streaming:
                 return self._collect_streaming_slice(
                     split=VALIDATION,
@@ -190,6 +194,7 @@ class SIDDatasetManager:
 
         # Case 2: Derive from train (if val_offset == 0)
         if val_offset == 0 and train_offset >= 0:
+            # SHIFT INTO THE TRAINING SPLIT TO CARVE OUT A TEST WINDOW.
             if self.use_streaming:
                 return self._collect_streaming_slice(
                     split=TRAIN,
@@ -230,6 +235,7 @@ class SIDDatasetManager:
         Materialise a streaming split, apply optional filtering, and return a
         contiguous slice [start, start+count) measured over the filtered view.
         """
+        # STREAMING HELPERS BUFFER ROWS UNTIL THE REQUESTED WINDOW IS FILLED.
         stream = self._load_split(split, max_samples=None)
         filtered_samples = []
         skipped = 0
@@ -261,6 +267,7 @@ class SIDDatasetManager:
         original_size = len(dataset)
         print(f"Original {split_type} dataset size: {original_size}")
         
+        # APPLY USER FILTER AND REPORT ANY DATA LOSS.
         # Apply the filter function
         filtered_dataset = dataset.filter(filter_fn)
         filtered_size = len(filtered_dataset)
@@ -309,7 +316,7 @@ class SIDDatasetManager:
                 f"  4. Increasing filter_multiplier parameter"
             )
 
-        # ✅ NEW: Limit to target number of samples after filtering
+        # LIMIT OR WARN BASED ON THE AVAILABLE FILTERED SAMPLE COUNT.
         if target_samples is not None and filtered_size > target_samples:
             final_dataset = filtered_dataset.select(range(target_samples))
             print(f"📝 Limited to {target_samples} samples from {filtered_size} filtered samples")

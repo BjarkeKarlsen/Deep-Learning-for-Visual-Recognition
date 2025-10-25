@@ -16,6 +16,7 @@ class SIDClassificationDataset(Dataset):
         - "mask": float tensor (zeroed when the source lacks a mask)
         - "label": long tensor holding the class index
     """
+    # WRAPS HUGGING FACE SAMPLES FOR BOTH CLASSIFICATION AND SEGMENTATION TASKS.
 
     @staticmethod
     def to_rgb(img):
@@ -47,7 +48,7 @@ class SIDClassificationDataset(Dataset):
         self.return_mask = return_mask
         self.return_label = return_label
 
-        # Default to the segmentation-style preprocessing so outputs stay aligned across tasks.
+        # DEFAULT IMAGE TRANSFORMS NORMALISE AND RESIZE SAMPLES.
         if transform is None:
             self.transform = Compose([
                 self.to_rgb,
@@ -60,6 +61,7 @@ class SIDClassificationDataset(Dataset):
             self.transform = transform
 
         if transform_mask is None:
+            # DEFAULT MASK TRANSFORMS KEEP BINARY MASKS ALIGNED WITH IMAGES.
             self.transform_mask = Compose([
                 Resize(
                     (self.image_size, self.image_size),
@@ -97,7 +99,7 @@ class SIDClassificationDataset(Dataset):
 
         outputs = {"image": image}
         
-        # Handle mask processing if return_mask is enabled
+        # OPTIONALLY ATTACH A CLEANED SEGMENTATION MASK.
         mask_tensor: torch.Tensor = None
         if self.return_mask:
             if raw_mask is None:
@@ -112,7 +114,7 @@ class SIDClassificationDataset(Dataset):
             mask_tensor = (mask_tensor > 0.5).float()
             
             outputs.update({"mask": mask_tensor})
-        # Label
+        # OPTIONALLY ATTACH THE CLASS LABEL.
         if self.return_label:
             label = example.get("label")
             if label is None:
