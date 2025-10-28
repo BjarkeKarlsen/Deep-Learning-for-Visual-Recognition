@@ -20,6 +20,7 @@ class BaselineClassifier(nn.Module):
     def __init__(self, num_classes: int = 3, base_width: int = 32):
         super().__init__()
 
+        # FEATURE EXTRACTOR DOWNSAMPLES AND EXPANDS CHANNEL DEPTH.
         widths = [base_width, base_width * 2, base_width * 4]
         self.stem = _conv_block(3, widths[0])
         self.stage1 = _conv_block(widths[0], widths[1])
@@ -28,6 +29,7 @@ class BaselineClassifier(nn.Module):
         self.downsample = nn.MaxPool2d(kernel_size=2, stride=2)
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
+        # LINEAR HEAD MAPS THE EMBEDDING TO THE TARGET CLASSES.
         self.classifier = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(p=0.4),

@@ -12,6 +12,7 @@ requires-python = ">=3.9"
 dependencies = [
     "torch==2.8.0",
     "torchvision==0.23.0",
+    "optuna>=4.5.0",
     "datasets",
     "pillow",
     "tqdm",

@@ -31,6 +31,7 @@ class ClassificationPlots(CommonPlots):
             if eval_history_path
             else None
         )
+        # CACHE TRAINING HISTORY AND EVAL REPORTS FOR REUSE ACROSS PLOTS.
 
     def plot_training_history(
         self,
@@ -154,6 +155,7 @@ class ClassificationPlots(CommonPlots):
         fig, ax = plt.subplots(
             figsize=(max(8, len(class_names)), max(6, len(class_names)))
         )
+        # DRAW HEATMAP OF TRUE VS PREDICTED COUNTS OR PROPORTIONS.
         sns.heatmap(
             cm, annot=True, fmt=fmt, cmap="Blues",
             xticklabels=class_names, yticklabels=class_names,
@@ -202,6 +204,7 @@ class ClassificationPlots(CommonPlots):
         w = 0.25
 
         fig, ax = plt.subplots(figsize=(max(10, len(class_names) * 1.5), 6))
+        # GROUPED BARS HIGHLIGHT CLASS-WISE PRECISION, RECALL, AND F1.
         ax.bar(x - w, precision, w, label="Precision")
         ax.bar(x, recall, w, label="Recall")
         ax.bar(x + w, f1, w, label="F1-Score")

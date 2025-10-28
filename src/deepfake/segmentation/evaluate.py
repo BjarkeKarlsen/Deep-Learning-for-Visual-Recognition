@@ -18,12 +18,14 @@ from deepfake.utils.evaluation_metrics_tracker import SegmentationEvaluationMetr
 from deepfake.utils.logger import SidLogger
 from deepfake.utils.model_persister import TorchModelPersister, IModelPersister
 from deepfake.config import Config
+from deepfake.utils.augmentation_factory import build_segmentation_transforms
 
 
 class Evaluator:
     """
     Runs segmentation inference, records Dice/IoU metrics, and generates gallery and plots.
     """
+    # DRIVES SEGMENTATION EVALUATION, SUMMARY METRICS, AND VISUAL OUTPUTS.
 
     def __init__(
         self,
@@ -35,7 +37,8 @@ class Evaluator:
         self.logger = logger
         self.device = torch.device(cfg.training.device)
 
-        # Dataset & DataLoader
+        # DATASET & DATALOADER
+        # BUILD TEST SPLIT WITH TAMPERED MASKS AND MATCHED TRANSFORMS.
         manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -48,12 +51,22 @@ class Evaluator:
             val_offset=cfg.data.val_samples,
             filter_fn=DatasetFilters.tampered_with_masks,
         )
+        joint_tf, image_tf, mask_tf = build_segmentation_transforms(
+            cfg.data.image_size,
+            cfg.model.normalize_mean,
+            cfg.model.normalize_std,
+            cfg.data.augment,
+            is_train=False,
+        )
         self.test_loader = DataLoader(
             SIDClassificationDataset(
                 test_ds,
                 image_size=cfg.data.image_size,
                 normalize_mean=cfg.model.normalize_mean,
                 normalize_std=cfg.model.normalize_std,
+                transform=image_tf,
+                transform_mask=mask_tf,
+                joint_transform=joint_tf,
                 return_mask=True,
             ),
             batch_size=cfg.loader.batch_size,
@@ -62,21 +75,24 @@ class Evaluator:
             pin_memory=torch.cuda.is_available(),
         )
 
-        # Metrics tracker
+        # METRICS TRACKER
+        # CAPTURES DICE/IOU HISTORY FOR SAVING AND PLOTTING.
         self.metrics_tracker = EvaluationMetricsTracker(
             SegmentationEvaluationMetrics,
             logger=logger,
         )
 
-        # Model
+        # MODEL
+        # RESTORE BEST CHECKPOINTED WEIGHTS BEFORE INFERENCE.
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
         self.persister = persister or TorchModelPersister()
-        self.persister.load_model(self.model, cfg.paths.model_path)
+        self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded segmentation model from {cfg.paths.model_path}")
 
     def run(self):
         """Full evaluation pipeline."""
         self.logger.log_evaluation_config(asdict(self.cfg))
+        # PIPELINE: INFER ON TEST SET, SUMMARISE SCORES, THEN PRODUCE PLOTS.
         dice_scores, iou_scores, gallery = self.infer()
         self.compute_and_log(dice_scores, iou_scores)
         self.save_and_plot(gallery)
@@ -93,6 +109,7 @@ class Evaluator:
         self.logger.info("Starting segmentation evaluation")
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Eval"):
+                # GATHER DICE AND IOU FOR EACH MINI-BATCH AND BUILD GALLERY SAMPLES.
                 images = batch["image"].to(self.device)
                 masks = batch["mask"].to(self.device)
                 logits = self.model(images)
@@ -101,13 +118,28 @@ class Evaluator:
                 iou_scores.append(metrics["iou"].item())
 
                 if len(gallery) < max_gallery:
-                    img = images[0].cpu()
-                    mean = torch.tensor(self.cfg.model.normalize_mean).view(3,1,1)
-                    std = torch.tensor(self.cfg.model.normalize_std).view(3,1,1)
-                    denorm = (img * std + mean).clamp(0,1).permute(1,2,0).numpy()
-                    true_mask = masks[0].squeeze(0).cpu().numpy()
-                    pred_mask = (torch.sigmoid(logits[0])>0.5).squeeze(0).cpu().numpy().astype(float)
-                    gallery.append((denorm, true_mask, pred_mask))
+                    mean = (
+                        torch.tensor(self.cfg.model.normalize_mean, device=images.device)
+                        .view(3, 1, 1)
+                    )
+                    std = (
+                        torch.tensor(self.cfg.model.normalize_std, device=images.device)
+                        .view(3, 1, 1)
+                    )
+                    for idx_in_batch in range(images.size(0)):
+                        if len(gallery) >= max_gallery:
+                            break
+                        img = images[idx_in_batch]
+                        denorm = (img * std + mean).clamp(0, 1).cpu().permute(1, 2, 0).numpy()
+                        true_mask = masks[idx_in_batch].squeeze(0).cpu().numpy()
+                        pred_mask = (
+                            (torch.sigmoid(logits[idx_in_batch]) > 0.5)
+                            .squeeze(0)
+                            .cpu()
+                            .numpy()
+                            .astype(float)
+                        )
+                        gallery.append((denorm, true_mask, pred_mask))
 
         return dice_scores, iou_scores, gallery
 
@@ -137,7 +169,11 @@ class Evaluator:
             output_directory=self.cfg.paths.run_root,
             eval_history_path=metrics_path,
         )
-        plotter.plot_segmentation_gallery(gallery, ncols=3, save_path=str(self.cfg.paths.run_root / "segmentation_gallery.png"))
+        plotter.plot_segmentation_gallery(
+            gallery,
+            ncols=3,
+            filename="segmentation_gallery.png",
+            save_path=self.cfg.paths.run_root,
+        )
         plotter.plot_training_history()  # plots history of dice/IoU
         self.logger.info("Generated segmentation evaluation plots")
-

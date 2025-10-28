@@ -1,4 +1,13 @@
-from .schema import Config, DataConfig, LoaderConfig, ModelConfig, PathsConfig, TrainingConfig
+from .schema import (
+    Config,
+    DataConfig,
+    LoaderConfig,
+    ModelConfig,
+    PathsConfig,
+    TrainingConfig,
+    AugmentationConfig,
+    SchedulerConfig,
+)
 
 __all__ = [
     "Config",
@@ -7,4 +16,6 @@ __all__ = [
     "ModelConfig",
     "PathsConfig",
     "TrainingConfig",
+    "AugmentationConfig",
+    "SchedulerConfig",
 ]

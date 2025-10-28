@@ -22,6 +22,7 @@ class ConfigLoader:
     DEFAULT_TEMPLATE = "default.yaml"
 
     def __init__(self, config_path: Optional[str] = None):
+        # INITIALISE PATHS TO DEFAULT RESOURCES AND USER OVERRIDES.
         repo_root = Path(__file__).resolve().parent.parent.parent.parent
         self.default_config_path = Path(__file__).resolve().parent.parent / "config" / self.DEFAULT_TEMPLATE
         self.config_path = Path(config_path).expanduser() if config_path else None
@@ -30,6 +31,7 @@ class ConfigLoader:
         self.cfg = self.load_config()
 
     def load_config(self) -> Config:
+        # MERGE STRUCTURED DEFAULTS WITH OPTIONAL USER SUPPLIED YAML.
         base = OmegaConf.structured(Config)
         defaults_yaml = self._load_yaml(self.default_config_path)
         default_cfg = OmegaConf.merge(base, defaults_yaml)
@@ -51,6 +53,7 @@ class ConfigLoader:
                 user_specified_device = True
 
         if not user_specified_device:
+            # AUTO-SELECT DEVICE WHEN THE USER LEAVES IT UNSPECIFIED.
             if _TORCH_AVAILABLE and torch.cuda.is_available():
                 cfg.training.device = "cuda"
             else:
@@ -64,6 +67,7 @@ class ConfigLoader:
 
     def dump_default_config(self, destination: Optional[Path] = None, *, force: bool = False) -> Path:
         """Write the default configuration template to disk."""
+        # ALLOWS USERS TO INSPECT OR CUSTOMISE THE BASE CONFIG TEMPLATE.
         default_destination = self.repo_root / "configs" / self.DEFAULT_FILENAME
         destination = destination or default_destination
         destination.parent.mkdir(parents=True, exist_ok=True)

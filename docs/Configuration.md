@@ -2,9 +2,10 @@
 
 This page lists every configuration block the toolkit understands, along with the keys you can set in your YAML files. Each section shows the expected value type and the default delivered in `src/deepfake/config/default.yaml`.
 
-## Using A Config File
+## Using Configuration Files
 - Copy one of the samples in `configs/` and adjust the keys you need.
-- Run the CLI with the file: `deepfake-cli train --task classification --config configs/my-run.yaml`.
+- The CLI selects a config automatically from `configs/` based on `--task` and `--env`. For example `deepfake-cli train --task classification --env dev` loads `configs/dev-classification.yaml`.
+- If you create a custom override, point to it with `--config` (optional) or update the `--env`/file naming convention accordingly.
 - Any key you omit falls back to the defaults below.
 
 ---
@@ -21,6 +22,15 @@ Controls dataset selection and sampling.
 | `test_samples` | int | `10` | Max test samples. |
 | `use_streaming` | bool | `true` | Stream data from HF (requires explicit sample caps). |
 | `use_disk_cache` | bool | `true` | Cache derived splits on disk for reuse. |
+| `augment.enable` | bool | `false` | Toggle training-time augmentation for classification dataloaders. |
+| `augment.random_resized_crop` | bool | `true` | Use random resized crop instead of a plain resize when augmentations are enabled. |
+| `augment.scale_min` / `scale_max` | float | `0.8` / `1.0` | Lower/upper bounds for crop area scale. |
+| `augment.horizontal_flip_prob` | float | `0.5` | Probability of horizontal flips. |
+| `augment.color_jitter_*` | float | see default YAML | Brightness/contrast/saturation/hue jitter magnitudes. |
+| `augment.gaussian_blur_prob` | float | `0.0` | Probability of applying Gaussian blur. |
+| `augment.random_erasing_*` | float | see default YAML | Parameters for random erasing; ignored if probability is zero. |
+| `augment.preview_samples` | int | `0` | Number of augmented images to snapshot before training (classification). |
+| `augment.preview_seed` | int | `1234` | RNG seed for augmentation preview sampling. |
 
 ---
 
@@ -60,7 +70,10 @@ Hyperparameters shared across tasks.
 | `learning_rate` | float | `0.001` | Base learning rate passed to the optimizer. |
 | `seed` | int | `42` | Global RNG seed. |
 | `device` | str | Auto-set (`"cuda"` if available, else `"cpu"`). Override only when needed. |
-| `save_interval` | int | `5` | Save a checkpoint every N epochs (classification). |
+| `checkpoint_frequency` | int | `5` | Create a checkpoint every N epochs. |
+| `label_smoothing` | float | `0.0` | Apply label smoothing to cross-entropy (classification). |
+| `grad_clip_norm` | float | `0.0` | Clip gradients to this L2 norm (0 disables clipping). |
+| `ema_decay` | float | `0.0` | Exponential moving-average decay for model weights (0 disables). |
 | `optimizer` | mapping | see below | Configure the optimiser family and hyperparameters. |
 
 ### `training.optimizer`
@@ -82,6 +95,16 @@ training:
     weight_decay: 0.01
     betas: [0.9, 0.95]
 ```
+
+### `training.scheduler`
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `name` | str | `""` | Supported values: `""` (disabled), `"cosine"`, `"onecycle"`. |
+| `t_max` | int | `0` | Override `T_max` for cosine annealing (defaults to `epochs`). |
+| `max_lr` | float | `0.0` | Peak LR for OneCycle (defaults to `learning_rate`). |
+| `pct_start` | float | `0.3` | Warm-up fraction for OneCycle. |
+| `div_factor` | float | `25.0` | Initial LR divisor for OneCycle. |
+| `final_div_factor` | float | `10000.0` | Final LR divisor for OneCycle. |
 
 ---
 

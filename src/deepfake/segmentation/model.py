@@ -54,6 +54,7 @@ class TamperSegmentationModel(nn.Module):
 
         widths = [base_width, base_width * 2, base_width * 4, base_width * 8]
 
+        # ENCODER STACK CAPTURES MULTI-SCALE FEATURES.
         self.enc1 = ConvBlock(in_channels, widths[0])
         self.enc2 = ConvBlock(widths[0], widths[1])
         self.enc3 = ConvBlock(widths[1], widths[2])
@@ -63,11 +64,13 @@ class TamperSegmentationModel(nn.Module):
 
         self.bottleneck = ConvBlock(widths[3], widths[3] * 2)
 
+        # DECODER REBUILDS RESOLUTION WITH SKIP CONNECTIONS.
         self.dec4 = DecoderBlock(widths[3] * 2, widths[3], widths[3])
         self.dec3 = DecoderBlock(widths[3], widths[2], widths[2])
         self.dec2 = DecoderBlock(widths[2], widths[1], widths[1])
         self.dec1 = DecoderBlock(widths[1], widths[0], widths[0])
 
+        # FINAL CONV OUTPUTS A SINGLE-CHANNEL MASK LOGIT.
         self.head = nn.Conv2d(widths[0], out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

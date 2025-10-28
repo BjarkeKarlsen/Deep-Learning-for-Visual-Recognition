@@ -76,6 +76,13 @@ lightning_logs/
 *.pt
 *.ckpt
 docs/_build/
+logs/
+outputs/**/checkpoints/
+outputs/**/model_state.pth
+outputs/**/optimizer_state.pth
+outputs/**/checkpoint_metadata.json
+outputs/**/metrics.json.backup_*
+outputs/**/history.epoch_*.json
 
 # Dataset downloads and caches
 /data/
@@ -83,6 +90,4 @@ docs/_build/
 .cache/
 
 # New project artefact roots
-*logs/
-
 *best_model.pth

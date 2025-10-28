@@ -10,6 +10,7 @@ def dice_coefficient(logits: torch.Tensor, targets: torch.Tensor, eps: float = 1
     Returns:
         single scalar Dice score across all N×H×W pixels
     """
+    # SIMPLE BINARY DICE METRIC USED DURING TRAIN AND VALIDATION LOOPS.
     probs = torch.sigmoid(logits)
     preds = (probs > 0.5).float().view(-1)
     targs = (targets > 0.5).float().view(-1)

@@ -1,4 +1,5 @@
 import torch
+from typing import Callable, Optional
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.v2 import Compose, Resize, Grayscale, Normalize, ToImage, ToDtype
 from PIL import Image
@@ -15,6 +16,7 @@ class SIDClassificationDataset(Dataset):
         - "mask": float tensor (zeroed when the source lacks a mask)
         - "label": long tensor holding the class index
     """
+    # WRAPS HUGGING FACE SAMPLES FOR BOTH CLASSIFICATION AND SEGMENTATION TASKS.
 
     @staticmethod
     def to_rgb(img):
@@ -30,6 +32,7 @@ class SIDClassificationDataset(Dataset):
                  normalize_std,
                  transform=None,
                  transform_mask=None,
+                 joint_transform: Optional[Callable] = None,
                  max_samples=None,
                  return_mask=False,
                  return_label=False
@@ -40,11 +43,12 @@ class SIDClassificationDataset(Dataset):
         self.normalize_std  = normalize_std
         self.transform      = transform
         self.transform_mask = transform_mask
+        self.joint_transform = joint_transform
         self.max_samples = max_samples 
         self.return_mask = return_mask
         self.return_label = return_label
 
-        # Default to the segmentation-style preprocessing so outputs stay aligned across tasks.
+        # DEFAULT IMAGE TRANSFORMS NORMALISE AND RESIZE SAMPLES.
         if transform is None:
             self.transform = Compose([
                 self.to_rgb,
@@ -57,6 +61,7 @@ class SIDClassificationDataset(Dataset):
             self.transform = transform
 
         if transform_mask is None:
+            # DEFAULT MASK TRANSFORMS KEEP BINARY MASKS ALIGNED WITH IMAGES.
             self.transform_mask = Compose([
                 Resize(
                     (self.image_size, self.image_size),
@@ -79,34 +84,37 @@ class SIDClassificationDataset(Dataset):
 
         example = self.dataset[idx]
 
-        image = self.transform(example["image"]) if self.transform else example["image"]
+        raw_image = self.to_rgb(example["image"])
+        raw_mask = example.get("mask") if self.return_mask else None
+
+        if self.joint_transform is not None:
+            if self.return_mask and raw_mask is None:
+                raise ValueError("Joint transform requires mask but sample has none")
+            raw_image, raw_mask = self.joint_transform(raw_image, raw_mask)
+
+        image = self.transform(raw_image) if self.transform else raw_image
         assert image.ndim == 3 and image.shape[1:] == (self.image_size, self.image_size), (
             f"Image has wrong shape: {image.shape}"
         )
 
-
-
-        label = torch.tensor(example["label"], dtype=torch.long)
-
         outputs = {"image": image}
         
-        # Handle mask processing if return_mask is enabled
+        # OPTIONALLY ATTACH A CLEANED SEGMENTATION MASK.
         mask_tensor: torch.Tensor = None
         if self.return_mask:
-            raw_mask = example.get("mask")
-            if raw_mask is not None:
-                mask_tensor = self.transform_mask(raw_mask)
-            else:
+            if raw_mask is None:
                 raise ValueError("Expected mask but sample has none")
+            mask_tensor = self.transform_mask(raw_mask) if self.transform_mask else raw_mask
 
             if mask_tensor.ndim == 2:
                 mask_tensor = mask_tensor.unsqueeze(0)
             assert mask_tensor.ndim == 3 and mask_tensor.shape[1:] == (self.image_size, self.image_size), (
                 f"Mask has wrong shape: {mask_tensor.shape}"
             )
+            mask_tensor = (mask_tensor > 0.5).float()
             
             outputs.update({"mask": mask_tensor})
-        # Label
+        # OPTIONALLY ATTACH THE CLASS LABEL.
         if self.return_label:
             label = example.get("label")
             if label is None:

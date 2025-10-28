@@ -14,6 +14,7 @@ class CommonPlots:
     """Base class for plotting, with unified save logic."""
 
     def __init__(self, output_dir: Optional[Union[str, Path]] = None):
+        # SET DEFAULT OUTPUT LOCATION AND GLOBAL MATPLOTLIB STYLE.
         self.output_dir = Path(output_dir) if output_dir else Path("results")
         plt.ioff()
         self._create_save_path(self.output_dir)

@@ -3,6 +3,28 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
+@dataclass
+class AugmentationConfig:
+    enable: bool = False
+    random_resized_crop: bool = True
+    scale_min: float = 0.8
+    scale_max: float = 1.0
+    horizontal_flip_prob: float = 0.5
+    color_jitter_brightness: float = 0.2
+    color_jitter_contrast: float = 0.2
+    color_jitter_saturation: float = 0.1
+    color_jitter_hue: float = 0.02
+    gaussian_blur_prob: float = 0.0
+    gaussian_blur_sigma_min: float = 0.1
+    gaussian_blur_sigma_max: float = 2.0
+    random_erasing_prob: float = 0.0
+    random_erasing_scale_min: float = 0.02
+    random_erasing_scale_max: float = 0.2
+    random_erasing_ratio_min: float = 0.3
+    random_erasing_ratio_max: float = 3.3
+    preview_samples: int = 0
+    preview_seed: int = 1234
+
 
 @dataclass
 class DataConfig:
@@ -13,6 +35,7 @@ class DataConfig:
     test_samples: int = 10
     use_streaming: bool = True
     use_disk_cache: bool = True
+    augment: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 @dataclass
 class LoaderConfig:
@@ -21,6 +44,8 @@ class LoaderConfig:
     shuffle_val: bool = False
     shuffle_test: bool = False
     num_workers: int = 4
+    prefetch_factor: int = 2
+    persistent_workers: bool = False
 
 @dataclass
 class ModelConfig:
@@ -43,6 +68,15 @@ class OptimizerConfig:
     nesterov: bool = False
 
 @dataclass
+class SchedulerConfig:
+    name: str = ""
+    t_max: int = 0
+    max_lr: float = 0.0
+    pct_start: float = 0.3
+    div_factor: float = 25.0
+    final_div_factor: float = 10000.0
+
+@dataclass
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
@@ -50,7 +84,11 @@ class TrainingConfig:
     device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
     checkpoint_frequency: int = 5                # checkpoint frequency
     keep_checkpoints: int = 3             # retention policy
+    label_smoothing: float = 0.0
+    grad_clip_norm: float = 0.0
+    ema_decay: float = 0.0
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 @dataclass
 class PathsConfig:

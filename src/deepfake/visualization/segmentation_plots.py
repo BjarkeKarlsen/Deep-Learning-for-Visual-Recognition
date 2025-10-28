@@ -19,6 +19,7 @@ class SegmentationPlots(CommonPlots):
             self.eval_report = self.load_evaluation_report(eval_history_path)
         else:
             self.eval_report = None
+        # STORE OPTIONAL HISTORY AND EVAL REPORT REFERENCES FOR LATER PLOTS.
 
     def plot_segmentation(self, image: np.ndarray, true_mask: np.ndarray, pred_mask: np.ndarray, 
                          filename: Optional[str] = None, save_path: Optional[str] = None) -> None:
@@ -88,6 +89,13 @@ class SegmentationPlots(CommonPlots):
             ax.imshow(self.overlay_mask(img, pred_m, color=(1, 0, 0)))
             ax.set_title("Pred Mask Overlay")
             ax.axis("off")
+
+        # Hide any unused axes so the grid does not show empty frames.
+        total_slots = axes.size
+        used_slots = len(examples) * 2
+        if used_slots < total_slots:
+            for ax in axes.flatten()[used_slots:]:
+                ax.axis("off")
 
         plt.tight_layout()
         
@@ -198,6 +206,7 @@ class SegmentationPlots(CommonPlots):
         Returns:
             Image with mask overlay
         """
+        # BLEND MASK INTO THE IMAGE USING THE REQUESTED COLOUR AND ALPHA.
         # Ensure uint8 [0..255]
         img = (image * 255).astype(np.uint8) if image.dtype != np.uint8 else image.copy()
         

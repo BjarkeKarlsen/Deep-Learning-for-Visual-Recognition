@@ -197,7 +197,7 @@ class SidLogger(logging.Logger):
             self.logger.info("Total time: n/a")
 
         if best_metric is not None and best_epoch is not None:
-            self.logger.info(f"Best metric {best_metric:.4f} at epoch {best_epoch+1}")
+            self.logger.info(f"Best metric {best_metric:.4f} at epoch {best_epoch}")
         else:
             self.logger.info("Best metric: n/a")
         self.logger.info("=" * 60)

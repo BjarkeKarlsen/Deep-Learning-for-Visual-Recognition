@@ -16,6 +16,7 @@ class TrainingMetrics:
 
     Uses slots for memory optimization and includes validation.
     """
+    # CAPTURES ONE POINT IN THE TRAINING CURVE WITH OPTIONAL EXTRA METRICS.
     epoch: int
     step: int
     train_loss: float
@@ -78,6 +79,7 @@ class TrainingMetricsTracker(IMetricsTracker):
     Enhanced implementation of metrics tracking with improved error handling,
     thread safety, validation, and automatic backup functionality.
     """
+    # MAINTAINS TRAINING HISTORY, BEST SCORES, AND OPTIONAL BACKUPS.
 
     def __init__(self, 
                  logger: Optional[logging.Logger] = None,
@@ -123,6 +125,7 @@ class TrainingMetricsTracker(IMetricsTracker):
         }
 
     def configure_backup(self, backup_base_path: Union[str, Path]) -> None:
+        # CHOOSE WHERE PERIODIC BACKUP FILES ARE WRITTEN.
         """
         Configure the base path for backup files.
 
@@ -196,10 +199,12 @@ class TrainingMetricsTracker(IMetricsTracker):
                 self._update_best_metrics(metrics)
 
                 # Automatic backup every N epochs
+                # PERIODICALLY WRITE BACKUP COPIES OF THE HISTORY FILE.
                 if (self.auto_backup and 
                     self._backup_base_path and 
                     self.backup_frequency > 0 and
-                    (metrics.epoch + 1) % self.backup_frequency == 0):
+                    metrics.epoch > 0 and
+                    metrics.epoch % self.backup_frequency == 0):
                     self._create_epoch_backup(metrics.epoch)
 
                 self.logger.debug(
