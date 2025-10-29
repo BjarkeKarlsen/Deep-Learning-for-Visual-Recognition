@@ -241,7 +241,6 @@ class SegmentationPlots(CommonPlots):
             markersize=5,
             label='Training Loss',
         )
-        ax1.fill_between(epochs, train_loss, train_loss.min(), color=self.colors["train_loss"], alpha=0.12)
 
         if np.isfinite(val_loss).any():
             ax1.plot(
@@ -255,36 +254,26 @@ class SegmentationPlots(CommonPlots):
                 markersize=5,
                 label='Validation Loss',
             )
-            valid_mask = np.isfinite(val_loss)
-            if valid_mask.any():
-                ax1.fill_between(
-                    epochs,
-                    val_loss,
-                    np.nanmin(val_loss[valid_mask]),
-                    where=valid_mask,
-                    color=self.colors["val_loss"],
-                    alpha=0.12,
-                )
-                best_val_idx = int(np.nanargmin(val_loss))
-                ax1.scatter(
-                    epochs[best_val_idx],
-                    val_loss[best_val_idx],
-                    s=110,
-                    color=self.colors["val_loss"],
-                    edgecolors='white',
-                    linewidth=1.5,
-                    zorder=6,
-                )
-                ax1.annotate(
-                    f"Best val: {val_loss[best_val_idx]:.3f}\nEpoch {best_val_idx+1}",
-                    xy=(epochs[best_val_idx], val_loss[best_val_idx]),
-                    xytext=(epochs[best_val_idx] + 0.4, val_loss[best_val_idx] + 0.04),
-                    arrowprops=dict(arrowstyle='->', color=self.colors["val_loss"], lw=1.4),
-                    fontsize=10,
-                    bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=self.colors["val_loss"], alpha=0.85),
-                )
+            best_val_idx = int(np.nanargmin(val_loss))
+            ax1.scatter(
+                epochs[best_val_idx],
+                val_loss[best_val_idx],
+                s=110,
+                color=self.colors["val_loss"],
+                edgecolors='white',
+                linewidth=1.5,
+                zorder=6,
+            )
+            ax1.annotate(
+                f"Best val: {val_loss[best_val_idx]:.3f}\nEpoch {best_val_idx+1}",
+                xy=(epochs[best_val_idx], val_loss[best_val_idx]),
+                xytext=(epochs[best_val_idx] + 0.4, val_loss[best_val_idx] + 0.04),
+                arrowprops=dict(arrowstyle='->', color=self.colors["val_loss"], lw=1.4),
+                fontsize=10,
+                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=self.colors["val_loss"], alpha=0.85),
+            )
 
-        self._style_axis(ax1, title='Segmentation Loss', xlabel='Epoch', ylabel='Loss')
+        self._style_axis(ax1, title='Segmentation Loss', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
         ax1.legend(loc="upper right", frameon=False)
 
         # Dice plot
@@ -302,14 +291,6 @@ class SegmentationPlots(CommonPlots):
                 markersize=5,
                 label='Training Dice',
             )
-            ax2.fill_between(
-                epochs,
-                train_dice_arr,
-                np.nanmin(train_dice_arr[np.isfinite(train_dice_arr)]) if np.isfinite(train_dice_arr).any() else 0,
-                color=self.colors["train_dice"],
-                alpha=0.12,
-            )
-
             if np.isfinite(val_dice_arr).any():
                 ax2.plot(
                     epochs,
@@ -321,14 +302,6 @@ class SegmentationPlots(CommonPlots):
                     linewidth=2.2,
                     markersize=5,
                     label='Validation Dice',
-                )
-                ax2.fill_between(
-                    epochs,
-                    val_dice_arr,
-                    np.nanmin(val_dice_arr[np.isfinite(val_dice_arr)]) if np.isfinite(val_dice_arr).any() else 0,
-                    where=np.isfinite(val_dice_arr),
-                    color=self.colors["val_dice"],
-                    alpha=0.12,
                 )
                 best_dice_idx = int(np.nanargmax(val_dice_arr))
                 ax2.scatter(
@@ -349,7 +322,7 @@ class SegmentationPlots(CommonPlots):
                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=self.colors["val_dice"], alpha=0.85),
                 )
 
-            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score')
+            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score', grid=False, facecolor='white')
             ax2.set_ylim(0, 1.02)
             ax2.legend(loc="lower right", frameon=False)
         else:
@@ -363,7 +336,7 @@ class SegmentationPlots(CommonPlots):
                 fontsize=12,
                 color="#555555",
             )
-            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score')
+            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score', grid=False, facecolor='white')
             ax2.set_ylim(0, 1.02)
 
         if ax3 is not None:
@@ -422,8 +395,7 @@ class SegmentationPlots(CommonPlots):
                         markersize=5,
                         label='Val Dice Loss',
                     )
-
-                self._style_axis(ax3, title='Loss Components', xlabel='Epoch', ylabel='Loss')
+                self._style_axis(ax3, title='Loss Components', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
                 ax3.legend(loc="upper right", frameon=False)
             else:
                 ax3.axis("off")

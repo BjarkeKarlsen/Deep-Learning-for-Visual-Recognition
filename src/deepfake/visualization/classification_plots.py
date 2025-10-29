@@ -72,7 +72,7 @@ class ClassificationPlots(CommonPlots):
         axes[idx].set_xlabel("Epoch")
         axes[idx].set_ylabel("Loss")
         axes[idx].legend()
-        axes[idx].grid(alpha=0.3)
+        axes[idx].grid(False)
         idx += 1
 
         # Accuracy plot
@@ -92,7 +92,7 @@ class ClassificationPlots(CommonPlots):
             axes[idx].set_ylabel("Accuracy")
             axes[idx].set_ylim(0, 1)
             axes[idx].legend()
-            axes[idx].grid(alpha=0.3)
+            axes[idx].grid(False)
             idx += 1
 
         # Additional metrics
@@ -111,7 +111,7 @@ class ClassificationPlots(CommonPlots):
             if any(k in name for k in ['acc', 'f1', 'precision', 'recall']):
                 ax.set_ylim(0, 1)
             ax.legend()
-            ax.grid(alpha=0.3)
+            ax.grid(False)
             idx += 1
 
         # Hide unused subplots
