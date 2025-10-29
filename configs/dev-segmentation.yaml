@@ -1,9 +1,9 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 512
-  train_samples: 1000
-  val_samples: 100
-  test_samples: 100
+  train_samples: 10000
+  val_samples: 1000
+  test_samples: 1000
   use_streaming: false
   use_disk_cache: true
   augment:
@@ -28,7 +28,7 @@ data:
     preview_seed: 1234
 
 loader:
-  batch_size: 4
+  batch_size: 12
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
@@ -83,6 +83,10 @@ training:
   loss:
     bce_weight: 0.3
     dice_weight: 0.7
+
+evaluation:
+  report_background: true
+  background_samples: 128
 
 paths:
   base: outputs

@@ -82,6 +82,10 @@ training:
     bce_weight: 0.5
     dice_weight: 0.5
 
+evaluation:
+  report_background: false
+  background_samples: 0
+
 paths:
   base: outputs
   model_filename: best_model.pth

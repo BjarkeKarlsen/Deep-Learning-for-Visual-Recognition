@@ -52,6 +52,10 @@ model:
     pretrained: false
     trainable_layers: 4
 
+evaluation:
+  report_background: false
+  background_samples: 0
+
 training:
   epochs: 100
   learning_rate: 0.001

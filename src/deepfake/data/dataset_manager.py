@@ -349,3 +349,8 @@ class DatasetFilters:
     def synthetic_images_only(example):
         """Filter for synthetic images only."""
         return example["label"] == 1
+
+    @staticmethod
+    def non_tampered(example):
+        """Filter out tampered entries; useful for background false-positive analysis."""
+        return example.get("label") is not None and example["label"] != 2

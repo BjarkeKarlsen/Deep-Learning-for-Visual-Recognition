@@ -36,6 +36,7 @@ class Evaluator:
         self.cfg = cfg
         self.logger = logger
         self.device = torch.device(cfg.training.device)
+        eval_cfg = getattr(cfg, "evaluation", None)
 
         # DATASET & DATALOADER
         # BUILD TEST SPLIT WITH TAMPERED MASKS AND MATCHED TRANSFORMS.
@@ -74,6 +75,32 @@ class Evaluator:
             num_workers=cfg.loader.num_workers,
             pin_memory=torch.cuda.is_available(),
         )
+        self.background_loader = None
+        if eval_cfg and getattr(eval_cfg, "report_background", False):
+            bg_samples = getattr(eval_cfg, "background_samples", 0) or cfg.data.test_samples
+            background_ds = manager.get_split(
+                split_type=TEST,
+                max_samples=bg_samples,
+                use_test_or_val_as_test_set=True,
+                val_offset=cfg.data.val_samples,
+                filter_fn=DatasetFilters.non_tampered,
+            )
+            self.background_loader = DataLoader(
+                SIDClassificationDataset(
+                    background_ds,
+                    image_size=cfg.data.image_size,
+                    normalize_mean=cfg.model.normalize_mean,
+                    normalize_std=cfg.model.normalize_std,
+                    transform=image_tf,
+                    transform_mask=mask_tf,
+                    joint_transform=joint_tf,
+                    return_mask=False,
+                ),
+                batch_size=cfg.loader.batch_size,
+                shuffle=False,
+                num_workers=cfg.loader.num_workers,
+                pin_memory=torch.cuda.is_available(),
+            )
 
         # METRICS TRACKER
         # CAPTURES DICE/IOU HISTORY FOR SAVING AND PLOTTING.
@@ -94,7 +121,10 @@ class Evaluator:
         self.logger.log_evaluation_config(asdict(self.cfg))
         # PIPELINE: INFER ON TEST SET, SUMMARISE SCORES, THEN PRODUCE PLOTS.
         dice_scores, iou_scores, gallery = self.infer()
-        self.compute_and_log(dice_scores, iou_scores)
+        background_stats = None
+        if self.background_loader is not None:
+            background_stats = self.evaluate_background()
+        self.compute_and_log(dice_scores, iou_scores, background_stats)
         self.save_and_plot(gallery)
         self.logger.info("Segmentation evaluation complete")
 
@@ -143,11 +173,12 @@ class Evaluator:
 
         return dice_scores, iou_scores, gallery
 
-    def compute_and_log(self, dice_scores, iou_scores):
+    def compute_and_log(self, dice_scores, iou_scores, background_stats=None):
         """Compute means, log, and record metrics."""
         mean_dice = float(np.mean(dice_scores)) if dice_scores else float("nan")
         mean_iou = float(np.mean(iou_scores)) if iou_scores else float("nan")
         self.logger.info(f"Mean Dice: {mean_dice:.4f}, Mean IoU: {mean_iou:.4f}")
+        additional = background_stats or {}
 
         self.metrics_tracker.add_metrics(
             SegmentationEvaluationMetrics(
@@ -156,6 +187,7 @@ class Evaluator:
                 primary_score=mean_dice,
                 dice_coefficient=mean_dice,
                 mean_iou=mean_iou,
+                additional_metrics=additional,
             )
         )
 
@@ -175,5 +207,29 @@ class Evaluator:
             filename="segmentation_gallery.png",
             save_path=self.cfg.paths.run_root,
         )
-        plotter.plot_training_history()  # plots history of dice/IoU
         self.logger.info("Generated segmentation evaluation plots")
+
+    def evaluate_background(self):
+        """Measure false-positive behaviour on background-only images."""
+        self.logger.info("Evaluating background false-positive rates")
+        coverage = []
+        max_probs = []
+        with torch.no_grad():
+            for batch in tqdm(self.background_loader, desc="Background Eval"):
+                images = batch["image"].to(self.device)
+                logits = self.model(images)
+                probs = torch.sigmoid(logits)
+                coverage.extend(probs.mean(dim=(1, 2, 3)).cpu().tolist())
+                max_probs.extend(probs.amax(dim=(1, 2, 3)).cpu().tolist())
+
+        mean_cov = float(np.mean(coverage)) if coverage else float("nan")
+        mean_max = float(np.mean(max_probs)) if max_probs else float("nan")
+        self.logger.info(
+            "Background stats — mean probability: %.6f, mean max probability: %.6f",
+            mean_cov,
+            mean_max,
+        )
+        return {
+            "background_mean_probability": mean_cov,
+            "background_mean_max_probability": mean_max,
+        }

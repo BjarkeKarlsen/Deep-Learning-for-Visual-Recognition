@@ -78,6 +78,11 @@ class ResNet34Backbone(BaseBackbone):
         self.layer4 = resnet.layer4
 
         # Optional fusion of the deepest features to enrich context
+        self.layer4_reduce = nn.Sequential(
+            nn.Conv2d(512, 256, kernel_size=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )
         self.deep_merge = nn.Sequential(
             nn.Conv2d(512, 256, kernel_size=1, bias=False),
             nn.BatchNorm2d(256),
@@ -122,10 +127,10 @@ class ResNet34Backbone(BaseBackbone):
         layer3 = self.layer3(layer2)  # H/16
 
         # Incorporate layer4 context while keeping resolution at H/16.
-        deep = layer3
         layer4 = self.layer4(layer3)  # H/32
         layer4_up = F.interpolate(layer4, size=layer3.shape[2:], mode="bilinear", align_corners=False)
-        deep = self.deep_merge(layer4_up + layer3)
+        layer4_reduced = self.layer4_reduce(layer4_up)
+        deep = self.deep_merge(torch.cat([layer3, layer4_reduced], dim=1))
 
         # Ensure skip maps stay aligned with input size hierarchy.
         skip2 = stem

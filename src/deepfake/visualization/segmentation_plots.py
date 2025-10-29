@@ -126,7 +126,16 @@ class SegmentationPlots(CommonPlots):
         train_dice = list(raw_train_dice) + [np.nan] * (n_epochs - len(raw_train_dice))
         val_dice = list(raw_val_dice) + [np.nan] * (n_epochs - len(raw_val_dice))
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        extra_head_losses = any(
+            key in curves for key in ("train_bce_loss", "train_dice_loss", "val_bce_loss", "val_dice_loss")
+        )
+        num_panels = 3 if extra_head_losses else 2
+        fig, axes = plt.subplots(1, num_panels, figsize=(7 * num_panels, 6))
+        if num_panels == 2:
+            ax1, ax2 = axes
+            ax3 = None
+        else:
+            ax1, ax2, ax3 = axes
 
         # Loss plot
         ax1.plot(epochs, curves.get('train_loss', []), 'b-', label='Training Loss', linewidth=2)
@@ -158,6 +167,30 @@ class SegmentationPlots(CommonPlots):
                     transform=ax2.transAxes, fontsize=12)
             ax2.set_title('Segmentation Dice Over Epochs', fontsize=14)
 
+        if ax3 is not None:
+            if 'train_bce_loss' in curves or 'train_dice_loss' in curves:
+                if 'train_bce_loss' in curves:
+                    ax3.plot(epochs, curves.get('train_bce_loss', []), 'c-', label='Train BCE', linewidth=2)
+                if 'val_bce_loss' in curves:
+                    val_bce = curves.get('val_bce_loss', [])
+                    if len(val_bce) < n_epochs:
+                        val_bce = list(val_bce) + [np.nan] * (n_epochs - len(val_bce))
+                    ax3.plot(epochs, val_bce, 'c--', label='Val BCE', linewidth=2)
+                if 'train_dice_loss' in curves:
+                    ax3.plot(epochs, curves.get('train_dice_loss', []), 'y-', label='Train Dice Loss', linewidth=2)
+                if 'val_dice_loss' in curves:
+                    val_dice_loss = curves.get('val_dice_loss', [])
+                    if len(val_dice_loss) < n_epochs:
+                        val_dice_loss = list(val_dice_loss) + [np.nan] * (n_epochs - len(val_dice_loss))
+                    ax3.plot(epochs, val_dice_loss, 'y--', label='Val Dice Loss', linewidth=2)
+                ax3.set_xlabel('Epoch', fontsize=12)
+                ax3.set_ylabel('Loss', fontsize=12)
+                ax3.set_title('Loss Components', fontsize=14)
+                ax3.grid(True, alpha=0.3)
+                ax3.legend()
+            else:
+                ax3.axis("off")
+
         plt.tight_layout()
         
         # Use the base class save_plot method
@@ -176,15 +209,23 @@ class SegmentationPlots(CommonPlots):
             
         lr = curves["learning_rate"]
         epochs = range(1, len(lr) + 1)
+        group_keys = sorted(k for k in curves.keys() if k.startswith("lr_group_") and k != "lr_group_0")
         
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(epochs, lr, "b-o")
+        ax.plot(epochs, lr, "b-o", label="lr_group_0")
+        for key in group_keys:
+            values = curves.get(key, [])
+            if values:
+                padded = list(values) + [np.nan] * (len(lr) - len(values))
+                ax.plot(epochs, padded[: len(lr)], marker="o", label=key)
         ax.set_xscale("linear")
         ax.set_yscale("log")
         ax.set_title("Learning Rate Schedule")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Learning Rate")
         ax.grid(alpha=0.3)
+        if group_keys:
+            ax.legend()
         
         plt.tight_layout()
         

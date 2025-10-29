@@ -54,6 +54,11 @@ class BackboneConfig:
     trainable_layers: int = 4
 
 @dataclass
+class EvaluationConfig:
+    report_background: bool = False
+    background_samples: int = 0
+
+@dataclass
 class ModelConfig:
     class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
     num_classes: int = field(init=False)
@@ -173,5 +178,6 @@ class Config:
     loader: LoaderConfig = field(default_factory=LoaderConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     Task: TaskConfig = field(default_factory=TaskConfig)

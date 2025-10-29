@@ -64,6 +64,7 @@ class Trainer:
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
 
+        self._log_backbone_trainability()
         logger.log_training_config(asdict(cfg))
 
     def train(self, start_epoch: int = 0):
@@ -93,8 +94,14 @@ class Trainer:
 
         # MAIN LOOP HANDLES TRAINING STEPS, VALIDATION, AND CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
-            avg_train_loss, avg_train_dice, steps_this_epoch = self._train_epoch(train_loader, epoch)
-            avg_val_loss, avg_val_dice = self._evaluation(val_loader)
+            (
+                avg_train_loss,
+                avg_train_dice,
+                steps_this_epoch,
+                avg_train_bce_loss,
+                avg_train_dice_loss,
+            ) = self._train_epoch(train_loader, epoch)
+            avg_val_loss, avg_val_dice, avg_val_bce_loss, avg_val_dice_loss = self._evaluation(val_loader)
             
             # Determine previous best before recording current metrics
             prev_best = self.metrics_tracker.get_best_metric("val_dice")
@@ -104,7 +111,11 @@ class Trainer:
                 self.scheduler.step()
 
             base_step += steps_this_epoch
-            current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
+            param_group_lrs = {
+                f"lr_group_{idx}": float(group["lr"])
+                for idx, group in enumerate(self.optimizer.param_groups)
+            }
+            current_lr = param_group_lrs.get("lr_group_0", max(float(self.optimizer.param_groups[0]["lr"]), 1e-12))
 
             # RECORD METRICS
             self.metrics_tracker.add_metrics(TrainingMetrics(
@@ -116,6 +127,11 @@ class Trainer:
                 additional_metrics={
                     "train_dice": avg_train_dice,
                     "val_dice": avg_val_dice,
+                    "train_bce_loss": avg_train_bce_loss,
+                    "train_dice_loss": avg_train_dice_loss,
+                    "val_bce_loss": avg_val_bce_loss,
+                    "val_dice_loss": avg_val_dice_loss,
+                    **param_group_lrs,
                 }
             ))
             
@@ -123,7 +139,9 @@ class Trainer:
             self.logger.info(
                 f"Epoch {epoch+1}: "
                 f"train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}, "
-                f"val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}"
+                f"train_bce={avg_train_bce_loss:.4f}, train_dice_loss={avg_train_dice_loss:.4f}, "
+                f"val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}, "
+                f"val_bce={avg_val_bce_loss:.4f}, val_dice_loss={avg_val_dice_loss:.4f}"
             )
             
             # SAVE BEST MODEL IF IMPROVED
@@ -171,6 +189,7 @@ class Trainer:
         """Run one training pass over the segmentation dataloader."""
         self.model.train()
         loss_sum, dice_sum, steps = 0.0, 0.0, 0
+        bce_sum, dice_loss_sum = 0.0, 0.0
         total_elements = 0
         
         # ITERATE OVER BATCHES WITH A PROGRESS BAR
@@ -204,19 +223,28 @@ class Trainer:
             # UPDATE TRAINING METRICS
             batch_elements = masks.numel()
             loss_sum += loss.item() * batch_elements
+            bce_sum += bce.item() * batch_elements
+            dice_loss_sum += dice.item() * batch_elements
             total_elements += batch_elements
             dice_sum += dice_coefficient(logits, masks).item()
 
             steps += 1
             # UPDATE PROGRESS BAR WITH CURRENT LOSS
             avg_dice = dice_sum / max(steps, 1)
-            pbar.set_postfix({'loss': f'{loss.item():.3f}', 'dice': f'{avg_dice:.3f}'})
+            pbar.set_postfix({
+                'loss': f'{loss.item():.3f}',
+                'dice': f'{avg_dice:.3f}',
+                'bce': f'{bce.item():.3f}',
+                'dice_loss': f'{dice.item():.3f}',
+            })
         
         # CALCULATE AVERAGE METRICS    
         avg_train_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_train_dice = dice_sum / max(steps, 1)
+        avg_train_bce = bce_sum / total_elements if total_elements else float('nan')
+        avg_train_dice_loss = dice_loss_sum / total_elements if total_elements else float('nan')
         
-        return avg_train_loss, avg_train_dice, steps
+        return avg_train_loss, avg_train_dice, steps, avg_train_bce, avg_train_dice_loss
 
     @torch.no_grad() # Optimize memory usage and speed up computations
     def _evaluation(self, val_loader: DataLoader):
@@ -224,6 +252,7 @@ class Trainer:
         
         self.model.eval()
         loss_sum, dice_sum = 0.0, 0.0
+        bce_sum, dice_loss_sum = 0.0, 0.0
         total_elements = 0
         steps = 0
         
@@ -242,6 +271,8 @@ class Trainer:
                 # ACCUMULATE LOSS AND DICE SCORE
                 batch_elements = masks.numel()
                 loss_sum += loss.item() * batch_elements
+                bce_sum += bce.item() * batch_elements
+                dice_loss_sum += dice.item() * batch_elements
                 total_elements += batch_elements
                 dice_sum += dice_coefficient(logits, masks).item()
                 steps += 1
@@ -249,8 +280,33 @@ class Trainer:
         # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
         avg_val_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_val_dice = dice_sum / max(steps, 1) if steps else float('nan')
+        avg_val_bce = bce_sum / total_elements if total_elements else float('nan')
+        avg_val_dice_loss = dice_loss_sum / total_elements if total_elements else float('nan')
         
-        return avg_val_loss, avg_val_dice
+        return avg_val_loss, avg_val_dice, avg_val_bce, avg_val_dice_loss
+
+    def _log_backbone_trainability(self) -> None:
+        """Log how many backbone parameters are trainable to confirm config behaviour."""
+        try:
+            backbone = getattr(self.model, "backbone")
+        except AttributeError:
+            return
+
+        total_params = sum(p.numel() for p in backbone.parameters())
+        trainable_params = sum(p.numel() for p in backbone.parameters() if p.requires_grad)
+        percentage = (trainable_params / total_params * 100) if total_params else 0.0
+        self.logger.info(
+            f"Backbone trainable parameters: {trainable_params:,} / {total_params:,} ({percentage:.2f}%)"
+        )
+
+        stage_summaries = []
+        for name, module in backbone.named_children():
+            stage_total = sum(p.numel() for p in module.parameters())
+            stage_trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+            stage_summaries.append(f"{name}: {stage_trainable:,}/{stage_total:,}")
+        if stage_summaries:
+            breakdown = ", ".join(stage_summaries)
+            self.logger.info(f"Backbone stage breakdown -> {breakdown}")
     
     def _load_data(self):
         """Prepare train/validation datasets and wrap them in DataLoaders."""
