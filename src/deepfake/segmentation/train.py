@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 import torch
 import torch.nn as nn
@@ -417,10 +417,11 @@ class Trainer:
         indices = torch.randperm(dataset_length, generator=rng)[:count]
 
         from torchvision.utils import make_grid, save_image
-        overlay_images = []
+        tile_images: List[torch.Tensor] = []
         mean = torch.tensor(self.cfg.model.normalize_mean).view(3, 1, 1)
         std = torch.tensor(self.cfg.model.normalize_std).view(3, 1, 1)
 
+        processed = 0
         for idx in indices:
             example = dataset[int(idx)]
             image = SIDClassificationDataset.to_rgb(example["image"])
@@ -434,18 +435,25 @@ class Trainer:
 
             denorm = (image_tensor * std + mean).clamp(0.0, 1.0)
             overlay = self._apply_mask_overlay(denorm, mask_tensor)
-            overlay_images.append(overlay)
+            mask_rgb = torch.zeros_like(denorm)
+            mask_rgb[0] = mask_tensor.squeeze(0)
 
-        if not overlay_images:
+            tile_images.extend([denorm, overlay, mask_rgb])
+            processed += 1
+
+        if not tile_images:
             self.logger.warning("Skipping augmentation preview: no samples processed successfully")
             return
 
-        overlays = torch.stack(overlay_images)
-        grid = make_grid(overlays, nrow=min(8, len(overlay_images)))
+        tiles = torch.stack(tile_images)
+        grid = make_grid(tiles, nrow=3, padding=4, pad_value=0.1)
         preview_path = self.cfg.paths.run_root / "augmentation_preview_segmentation.png"
         preview_path.parent.mkdir(parents=True, exist_ok=True)
         save_image(grid, preview_path)
-        self.logger.info(f"Saved segmentation augmentation preview with {len(overlay_images)} samples to {preview_path}")
+        self.logger.info(
+            f"Saved segmentation augmentation preview with {processed} samples "
+            f"({len(tile_images)} panels) to {preview_path}"
+        )
 
     @staticmethod
     def _apply_mask_overlay(image_tensor: torch.Tensor, mask_tensor: torch.Tensor, color=(1.0, 0.0, 0.0), alpha: float = 0.4):

@@ -24,7 +24,7 @@ data:
     random_erasing_scale_max: 0.1
     random_erasing_ratio_min: 0.3
     random_erasing_ratio_max: 3.3
-    preview_samples: 8
+    preview_samples: 12
     preview_seed: 1234
 
 loader:
