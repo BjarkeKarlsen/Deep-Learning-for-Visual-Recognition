@@ -126,9 +126,18 @@ class SegmentationPlots(CommonPlots):
         raw_train_dice = curves.get('train_dice', [])
         raw_val_dice = curves.get('val_dice', [])
         
+        def pad_curve(values: List[float], length: int) -> List[float]:
+            """Pad or trim a curve to ensure it matches the number of epochs."""
+            data = list(values)
+            if len(data) < length:
+                data.extend([np.nan] * (length - len(data)))
+            elif len(data) > length:
+                data = data[:length]
+            return data
+
         # Pad dice arrays to match epochs length
-        train_dice = list(raw_train_dice) + [np.nan] * (n_epochs - len(raw_train_dice))
-        val_dice = list(raw_val_dice) + [np.nan] * (n_epochs - len(raw_val_dice))
+        train_dice = pad_curve(raw_train_dice, n_epochs)
+        val_dice = pad_curve(raw_val_dice, n_epochs)
 
         extra_head_losses = any(
             key in curves for key in ("train_bce_loss", "train_dice_loss", "val_bce_loss", "val_dice_loss")
@@ -146,8 +155,8 @@ class SegmentationPlots(CommonPlots):
         if 'val_loss' in curves and curves['val_loss']:
             val_loss = curves.get('val_loss', [np.nan] * n_epochs)
             # Pad validation loss if needed
-            if len(val_loss) < n_epochs:
-                val_loss = list(val_loss) + [np.nan] * (n_epochs - len(val_loss))
+            if len(val_loss) != n_epochs:
+                val_loss = pad_curve(val_loss, n_epochs)
             ax1.plot(epochs, val_loss, 'r-', label='Validation Loss', linewidth=2)
         ax1.set_xlabel('Epoch', fontsize=12)
         ax1.set_ylabel('Loss', fontsize=12)
@@ -174,18 +183,16 @@ class SegmentationPlots(CommonPlots):
         if ax3 is not None:
             if 'train_bce_loss' in curves or 'train_dice_loss' in curves:
                 if 'train_bce_loss' in curves:
-                    ax3.plot(epochs, curves.get('train_bce_loss', []), 'c-', label='Train BCE', linewidth=2)
+                    train_bce = pad_curve(curves.get('train_bce_loss', []), n_epochs)
+                    ax3.plot(epochs, train_bce, 'c-', label='Train BCE', linewidth=2)
                 if 'val_bce_loss' in curves:
-                    val_bce = curves.get('val_bce_loss', [])
-                    if len(val_bce) < n_epochs:
-                        val_bce = list(val_bce) + [np.nan] * (n_epochs - len(val_bce))
+                    val_bce = pad_curve(curves.get('val_bce_loss', []), n_epochs)
                     ax3.plot(epochs, val_bce, 'c--', label='Val BCE', linewidth=2)
                 if 'train_dice_loss' in curves:
-                    ax3.plot(epochs, curves.get('train_dice_loss', []), 'y-', label='Train Dice Loss', linewidth=2)
+                    train_dice_loss = pad_curve(curves.get('train_dice_loss', []), n_epochs)
+                    ax3.plot(epochs, train_dice_loss, 'y-', label='Train Dice Loss', linewidth=2)
                 if 'val_dice_loss' in curves:
-                    val_dice_loss = curves.get('val_dice_loss', [])
-                    if len(val_dice_loss) < n_epochs:
-                        val_dice_loss = list(val_dice_loss) + [np.nan] * (n_epochs - len(val_dice_loss))
+                    val_dice_loss = pad_curve(curves.get('val_dice_loss', []), n_epochs)
                     ax3.plot(epochs, val_dice_loss, 'y--', label='Val Dice Loss', linewidth=2)
                 ax3.set_xlabel('Epoch', fontsize=12)
                 ax3.set_ylabel('Loss', fontsize=12)
