@@ -50,6 +50,11 @@ model:
     - 0.229
     - 0.224
     - 0.225
+  base_width: 16
+  backbone:
+    name: resnet34
+    pretrained: true
+    trainable_layers: 2
 
 training:
   epochs: 10

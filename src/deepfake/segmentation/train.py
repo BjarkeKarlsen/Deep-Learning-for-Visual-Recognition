@@ -44,7 +44,7 @@ class Trainer:
         self.device = torch.device(cfg.training.device)
 
         # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
-        self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
+        self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self.bce_loss = nn.BCEWithLogitsLoss()
         loss_cfg = getattr(cfg.training, "loss", None)
         self.bce_weight = getattr(loss_cfg, "bce_weight", 0.5)

@@ -48,12 +48,20 @@ class LoaderConfig:
     persistent_workers: bool = False
 
 @dataclass
+class BackboneConfig:
+    name: str = "custom"
+    pretrained: bool = False
+    trainable_layers: int = 4
+
+@dataclass
 class ModelConfig:
     class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
     num_classes: int = field(init=False)
     normalize_mean: List[float] = field(default_factory=lambda: [0.485, 0.456, 0.406])
     normalize_std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
     tampered_label: int = 2
+    base_width: int = 16
+    backbone: "BackboneConfig" = field(default_factory=lambda: BackboneConfig())
 
     def __post_init__(self) -> None:
         # Cache the class count so downstream consumers skip recomputing len(class_names).

@@ -84,7 +84,7 @@ class Evaluator:
 
         # MODEL
         # RESTORE BEST CHECKPOINTED WEIGHTS BEFORE INFERENCE.
-        self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
+        self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self.persister = persister or TorchModelPersister()
         self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded segmentation model from {cfg.paths.model_path}")
