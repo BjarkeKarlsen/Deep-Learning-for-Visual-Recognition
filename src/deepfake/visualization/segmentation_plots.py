@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
@@ -59,7 +59,8 @@ class SegmentationPlots(CommonPlots):
                                  examples: List[Tuple[np.ndarray, np.ndarray, np.ndarray]],
                                  ncols: int = 3,
                                  filename: Optional[str] = None,
-                                 save_path: Optional[str] = None) -> None:
+                                 save_path: Optional[str] = None,
+                                 title_prefix: str = "Example") -> None:
         """
         Plot a grid of segmentation examples.
         
@@ -69,6 +70,9 @@ class SegmentationPlots(CommonPlots):
             filename: Optional filename for the saved plot.
             save_path: Optional directory path to save the figure.
         """
+        if not examples:
+            return
+
         n = len(examples)
         nrows = int(np.ceil(n / ncols))
         fig, axes = plt.subplots(nrows * 2, ncols, figsize=(4 * ncols, 4 * nrows * 2))
@@ -81,13 +85,13 @@ class SegmentationPlots(CommonPlots):
             # True overlay
             ax = axes[row, col]
             ax.imshow(self.overlay_mask(img, true_m, color=(0, 1, 0)))
-            ax.set_title("True Mask Overlay")
+            ax.set_title(f"{title_prefix} #{idx+1} – True")
             ax.axis("off")
 
             # Pred overlay
             ax = axes[row + 1, col]
             ax.imshow(self.overlay_mask(img, pred_m, color=(1, 0, 0)))
-            ax.set_title("Pred Mask Overlay")
+            ax.set_title(f"{title_prefix} #{idx+1} – Pred")
             ax.axis("off")
 
         # Hide any unused axes so the grid does not show empty frames.
@@ -231,6 +235,99 @@ class SegmentationPlots(CommonPlots):
         
         # Use the base class save_plot method
         self.save_plot(fig, filename=filename or "learning_rate_schedule.png", save_path=save_path)
+
+    def plot_bucket_metrics(self, bucket_metrics: Dict[str, Dict[str, float]],
+                            filename: Optional[str] = None,
+                            save_path: Optional[str] = None) -> None:
+        if not bucket_metrics:
+            return
+
+        labels = list(bucket_metrics.keys())
+        mean_dice = [bucket_metrics[label].get("mean_dice", float("nan")) for label in labels]
+        counts = [bucket_metrics[label].get("count", 0) for label in labels]
+
+        fig, ax1 = plt.subplots(figsize=(12, 6))
+        bars = ax1.bar(labels, mean_dice, color="#4c72b0", alpha=0.8)
+        ax1.set_ylabel("Mean Dice", fontsize=12)
+        ax1.set_ylim(0, 1)
+        ax1.set_title("Dice by Tampered Area Bucket", fontsize=14)
+        ax1.grid(axis="y", alpha=0.3)
+
+        ax2 = ax1.twinx()
+        ax2.plot(labels, counts, color="#dd8452", marker="o", linewidth=2, label="Sample Count")
+        ax2.set_ylabel("Sample Count", fontsize=12)
+        ax2.set_ylim(0, max(counts) * 1.2 if counts else 1)
+        ax2.legend(loc="upper right")
+
+        for bar, value in zip(bars, counts):
+            ax1.annotate(
+                f"{value}",
+                xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
+                xytext=(0, 5),
+                textcoords="offset points",
+                ha="center",
+                fontsize=10,
+                color="#333333",
+            )
+
+        plt.tight_layout()
+        self.save_plot(fig, filename=filename or "bucket_metrics.png", save_path=save_path)
+
+    def plot_threshold_sweep(self, threshold_metrics: Dict[str, Dict[str, float]],
+                             filename: Optional[str] = None,
+                             save_path: Optional[str] = None) -> None:
+        if not threshold_metrics:
+            return
+
+        thresholds = sorted(threshold_metrics.keys(), key=lambda x: float(x))
+        dice_vals = [threshold_metrics[t].get("dice", float("nan")) for t in thresholds]
+        precision_vals = [threshold_metrics[t].get("precision", float("nan")) for t in thresholds]
+        recall_vals = [threshold_metrics[t].get("recall", float("nan")) for t in thresholds]
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(thresholds, dice_vals, marker="o", label="Dice")
+        ax.plot(thresholds, precision_vals, marker="s", label="Precision")
+        ax.plot(thresholds, recall_vals, marker="^", label="Recall")
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("Threshold", fontsize=12)
+        ax.set_ylabel("Score", fontsize=12)
+        ax.set_title("Threshold Sweep", fontsize=14)
+        ax.grid(alpha=0.3)
+        ax.legend()
+
+        plt.tight_layout()
+        self.save_plot(fig, filename=filename or "threshold_sweep.png", save_path=save_path)
+
+    def plot_background_histograms(self, background_stats: Dict[str, Any],
+                                   filename: Optional[str] = None,
+                                   save_path: Optional[str] = None) -> None:
+        if not background_stats:
+            return
+
+        bins = background_stats.get("background_hist_bins")
+        cov_counts = background_stats.get("background_hist_coverage")
+        max_counts = background_stats.get("background_hist_max")
+
+        if not bins or cov_counts is None or max_counts is None:
+            return
+
+        bins = np.array(bins)
+        cov_counts = np.array(cov_counts)
+        max_counts = np.array(max_counts)
+        centers = (bins[:-1] + bins[1:]) / 2
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        width = (bins[1] - bins[0]) * 0.4
+        ax.bar(centers - width / 2, cov_counts, width=width, label="Mean Probability", alpha=0.7)
+        ax.bar(centers + width / 2, max_counts, width=width, label="Max Probability", alpha=0.7)
+        ax.set_xlabel("Probability", fontsize=12)
+        ax.set_ylabel("Image Count", fontsize=12)
+        ax.set_title("Background False-Positive Distribution", fontsize=14)
+        ax.grid(alpha=0.3)
+        ax.legend()
+
+        plt.tight_layout()
+        self.save_plot(fig, filename=filename or "background_fp_hist.png", save_path=save_path)
 
     def overlay_mask(self, image: np.ndarray, mask: np.ndarray,
                     alpha: float = 0.5,

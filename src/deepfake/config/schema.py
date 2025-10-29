@@ -57,6 +57,9 @@ class BackboneConfig:
 class EvaluationConfig:
     report_background: bool = False
     background_samples: int = 0
+    thresholds: List[float] = field(default_factory=lambda: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    bucket_edges: List[float] = field(default_factory=lambda: [0.5, 2.0])
+    analysis_examples: int = 6
 
 @dataclass
 class ModelConfig:
