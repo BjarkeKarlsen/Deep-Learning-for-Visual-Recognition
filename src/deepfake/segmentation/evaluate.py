@@ -151,8 +151,8 @@ class Evaluator:
         best_examples: List[Tuple[float, Tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
         worst_examples: List[Tuple[float, Tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
 
-        mean_tensor = torch.tensor(self.cfg.model.normalize_mean, device=self.device).view(1, 3, 1, 1)
-        std_tensor = torch.tensor(self.cfg.model.normalize_std, device=self.device).view(1, 3, 1, 1)
+        mean_tensor = torch.tensor(self.cfg.model.normalize_mean, device=self.device).view(3, 1, 1)
+        std_tensor = torch.tensor(self.cfg.model.normalize_std, device=self.device).view(3, 1, 1)
 
         self.logger.info("Starting segmentation evaluation")
         with torch.no_grad():
@@ -308,9 +308,7 @@ class Evaluator:
         cov_hist, _ = np.histogram(coverage, bins=bins)
         max_hist, _ = np.histogram(max_probs, bins=bins)
         self.logger.info(
-            "Background stats — mean probability: %.6f, mean max probability: %.6f",
-            mean_cov,
-            mean_max,
+            f"Background stats — mean probability: {mean_cov:.6f}, mean max probability: {mean_max:.6f}"
         )
         return {
             "background_mean_probability": mean_cov,
