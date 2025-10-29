@@ -100,10 +100,30 @@ def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
 def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
     # DEFINE SEARCH SPACE FOR SEGMENTATION EXPERIMENTS.
     bce_weight = trial.suggest_float("bce_weight", 0.3, 0.7)
-    scale_min = trial.suggest_float("scale_min", 0.6, 0.9)
-    scale_delta = trial.suggest_float("scale_delta", 0.05, 0.3)
+    scale_min = trial.suggest_float("scale_min", 0.5, 0.85)
+    scale_delta = trial.suggest_float("scale_delta", 0.05, 0.35)
     scale_max = min(1.2, scale_min + scale_delta)
-    flip_prob = trial.suggest_float("horizontal_flip_prob", 0.3, 0.7)
+    flip_prob = trial.suggest_float("horizontal_flip_prob", 0.2, 0.8)
+    blur_prob = trial.suggest_float("blur_prob", 0.0, 0.3)
+    blur_sigma_min = trial.suggest_float("blur_sigma_min", 0.05, 0.2)
+    blur_sigma_max = trial.suggest_float("blur_sigma_max", 0.8, 2.0)
+    if blur_sigma_max <= blur_sigma_min:
+        blur_sigma_max = blur_sigma_min + 0.1
+
+    cj_brightness = trial.suggest_float("color_jitter_brightness", 0.0, 0.3)
+    cj_contrast = trial.suggest_float("color_jitter_contrast", 0.0, 0.3)
+    cj_saturation = trial.suggest_float("color_jitter_saturation", 0.0, 0.2)
+    cj_hue = trial.suggest_float("color_jitter_hue", 0.0, 0.05)
+
+    re_prob = trial.suggest_float("random_erasing_prob", 0.0, 0.2)
+    re_scale_min = trial.suggest_float("random_erasing_scale_min", 0.005, 0.05)
+    re_scale_max = trial.suggest_float("random_erasing_scale_max", 0.05, 0.4)
+    if re_scale_max <= re_scale_min:
+        re_scale_max = re_scale_min + 0.01
+    re_ratio_min = trial.suggest_float("random_erasing_ratio_min", 0.1, 0.5)
+    re_ratio_max = trial.suggest_float("random_erasing_ratio_max", 2.0, 4.0)
+    if re_ratio_max <= re_ratio_min:
+        re_ratio_max = re_ratio_min + 0.5
 
     return {
         "training": {
@@ -124,10 +144,21 @@ def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
         },
         "data": {
             "augment": {
-                "gaussian_blur_prob": trial.suggest_float("blur_prob", 0.0, 0.25),
+                "gaussian_blur_prob": blur_prob,
+                "gaussian_blur_sigma_min": blur_sigma_min,
+                "gaussian_blur_sigma_max": blur_sigma_max,
                 "scale_min": scale_min,
                 "scale_max": scale_max,
                 "horizontal_flip_prob": flip_prob,
+                "color_jitter_brightness": cj_brightness,
+                "color_jitter_contrast": cj_contrast,
+                "color_jitter_saturation": cj_saturation,
+                "color_jitter_hue": cj_hue,
+                "random_erasing_prob": re_prob,
+                "random_erasing_scale_min": re_scale_min,
+                "random_erasing_scale_max": re_scale_max,
+                "random_erasing_ratio_min": re_ratio_min,
+                "random_erasing_ratio_max": re_ratio_max,
             }
         },
     }
