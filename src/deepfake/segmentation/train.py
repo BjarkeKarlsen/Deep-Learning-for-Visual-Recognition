@@ -458,57 +458,49 @@ class Trainer:
                 comment="Segmentation Architecture",
                 format="svg",
                 graph_attr={
-                    "rankdir": "TB",
+                    "rankdir": "LR",
                     "splines": "spline",
                     "fontsize": "11",
                     "fontname": "Helvetica Neue",
+                    "pad": "0.4",
                 },
                 node_attr={
                     "shape": "rectangle",
                     "style": "rounded,filled",
-                    "color": "#4a6fa5",
-                    "fillcolor": "#e8f1fb",
+                    "color": "#3f6aa6",
+                    "fillcolor": "#e4edf9",
                     "fontname": "Helvetica Neue",
                     "fontsize": "11",
                 },
                 edge_attr={
-                    "color": "#4a6fa5",
-                    "arrowsize": "0.7",
+                    "color": "#3f6aa6",
+                    "arrowsize": "0.9",
+                    "penwidth": "1.2",
                 },
             )
 
-            dot.node("input", f"Input\n3×{self.cfg.data.image_size}×{self.cfg.data.image_size}", shape="parallelogram", fillcolor="#f6ede4", color="#c97b3d")
-            dot.node("backbone", f"Backbone\n{self.cfg.model.backbone.name}", fillcolor="#d8e6f5")
-            dot.node("bottleneck", "Bottleneck\n256×16×16", fillcolor="#d8e6f5")
-            dot.node("dec4", "Decoder Block 4\n128×32×32")
-            dot.node("dec3", "Decoder Block 3\n64×64×64")
-            dot.node("dec2", "Decoder Block 2\n64×128×128")
-            dot.node("dec1", "Decoder Block 1\n64×256×256")
-            dot.node("head", "Head\n1×256×256", fillcolor="#f6ede4", color="#c97b3d")
-            dot.node("output", "Tamper Mask\n(256×256)", shape="parallelogram", fillcolor="#f6ede4", color="#c97b3d")
+            dot.node("input", f"Input\n3×{self.cfg.data.image_size}×{self.cfg.data.image_size}", shape="parallelogram", fillcolor="#f9ede3", color="#d28a3a")
+            dot.node("enc1", "Encoder Block 1\n64×128×128")
+            dot.node("enc2", "Encoder Block 2\n128×64×64")
+            dot.node("bottleneck", "Bottleneck\n256×32×32", fillcolor="#cdddf4")
+            dot.node("dec2", "Decoder Block 2\n64×64×64", fillcolor="#f2f7fd")
+            dot.node("dec1", "Decoder Block 1\n64×128×128", fillcolor="#f2f7fd")
+            dot.node("head", "Output Conv\n1×256×256", fillcolor="#f9ede3", color="#d28a3a")
+            dot.node("output", "Tamper Mask\n256×256", shape="parallelogram", fillcolor="#f9ede3", color="#d28a3a")
 
-            dot.edge("input", "backbone")
-            dot.edge("backbone", "bottleneck")
-            dot.edge("bottleneck", "dec4")
-            dot.edge("dec4", "dec3")
-            dot.edge("dec3", "dec2")
+            dot.edge("input", "enc1")
+            dot.edge("enc1", "enc2")
+            dot.edge("enc2", "bottleneck")
+            dot.edge("bottleneck", "dec2")
             dot.edge("dec2", "dec1")
             dot.edge("dec1", "head")
             dot.edge("head", "output")
 
-            # Add skip connections as annotations
-            with dot.subgraph(name="cluster_skips") as c:
-                c.attr(label="Skip Connections", color="#ffffff", fontcolor="#4a6fa5", fontsize="10")
-                c.node_attr.update(shape="note", fillcolor="#fff4cc", color="#edb458")
-                c.edge_attr.update(style="dashed", color="#edb458")
-                c.node("skip1", "Skip 1\n64×256×256")
-                c.node("skip2", "Skip 2\n64×128×128")
-                c.node("skip3", "Skip 3\n64×64×64")
-                c.node("skip4", "Skip 4\n128×32×32")
-                c.edge("skip4", "dec4")
-                c.edge("skip3", "dec3")
-                c.edge("skip2", "dec2")
-                c.edge("skip1", "dec1")
+            dot.edge("enc1", "dec1", style="dashed", color="#d3a44c", penwidth="1.2", arrowsize="0.7")
+            dot.edge("enc2", "dec2", style="dashed", color="#d3a44c", penwidth="1.2", arrowsize="0.7")
+
+            dot.body.append("{rank=same; enc1; dec1}")
+            dot.body.append("{rank=same; enc2; dec2}")
 
             output_path = run_root / "model_architecture_highlevel"
             dot.render(str(output_path), cleanup=True)
