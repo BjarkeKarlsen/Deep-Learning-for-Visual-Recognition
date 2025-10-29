@@ -22,22 +22,65 @@ class CommonPlots:
 
     def _setup_plot_style(self):
         """Set up consistent plotting style across all plots."""
-        plt.style.use('default')
-        sns.set_palette("husl")
+        sns.set_theme(context="talk", style="whitegrid")
+        # Default palette prioritises good contrast on light backgrounds.
+        palette = sns.color_palette("deep")
         plt.rcParams.update({
             'figure.figsize': (10, 6),
             'axes.titlesize': 14,
+            'axes.titleweight': 'semibold',
             'axes.labelsize': 12,
+            'axes.facecolor': '#f7f9fc',
+            'figure.facecolor': 'white',
+            'font.size': 11,
             'xtick.labelsize': 10,
             'ytick.labelsize': 10,
             'legend.fontsize': 10,
-            'grid.alpha': 0.3
+            'axes.edgecolor': '#d6d9de',
+            'axes.linewidth': 0.8,
+            'grid.alpha': 0.35,
+            'grid.linestyle': '--',
+            'savefig.bbox': 'tight',
         })
+        plt.rcParams['axes.prop_cycle'] = plt.cycler(color=palette)
+        self._axis_facecolor = '#f7f9fc'
     
     def _create_save_path(self, path: Path) -> Path:
         """Create save_path directory if it doesn't exist."""
         path.parent.mkdir(parents=True, exist_ok=True)
         return path.parent
+
+    def _style_axis(
+        self,
+        ax: plt.Axes,
+        *,
+        title: Optional[str] = None,
+        xlabel: Optional[str] = None,
+        ylabel: Optional[str] = None,
+        grid: bool = True,
+        facecolor: Optional[str] = None,
+    ) -> None:
+        """Apply a consistent visual treatment to axes."""
+        if facecolor is None:
+            facecolor = getattr(self, "_axis_facecolor", None)
+        if facecolor:
+            ax.set_facecolor(facecolor)
+        if title is not None:
+            ax.set_title(title, fontsize=14, fontweight='semibold', pad=12)
+        if xlabel is not None:
+            ax.set_xlabel(xlabel, fontsize=12, labelpad=10)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel, fontsize=12, labelpad=10)
+        if grid:
+            ax.grid(True, which="major", color="#d0d6e0", linewidth=0.8, alpha=0.5)
+            ax.set_axisbelow(True)
+        else:
+            ax.grid(False)
+        ax.tick_params(axis='both', colors='#3d3d3d')
+        for spine in ('top', 'right'):
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color('#d6d9de')
+        ax.spines['bottom'].set_color('#d6d9de')
     
     def load_training_history(self, json_path: Union[str, Path]) -> Dict[str, Any]:
         """

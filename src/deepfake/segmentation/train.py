@@ -64,6 +64,22 @@ class Trainer:
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
 
+        metric_directions = {
+            "train_dice": "max",
+            "val_dice": "max",
+            "train_bce_loss": "min",
+            "train_dice_loss": "min",
+            "val_bce_loss": "min",
+            "val_dice_loss": "min",
+        }
+        for idx, _ in enumerate(self.optimizer.param_groups):
+            metric_directions[f"lr_group_{idx}"] = "last"
+        self.metrics_tracker.configure_tracking(
+            track_train_acc=False,
+            track_val_acc=False,
+            metric_directions=metric_directions,
+        )
+
         self._log_backbone_trainability()
         logger.log_training_config(asdict(cfg))
 
