@@ -34,6 +34,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     make_dot = None  # type: ignore
 
+try:
+    import graphviz  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    graphviz = None  # type: ignore
+
 class Trainer:
     """
     Class-based trainer for tamper segmentation with mixed precision,
@@ -419,26 +424,97 @@ class Trainer:
         # Torchviz computation graph
         if make_dot is not None:
             try:
-                was_training = self.model.training
-                self.model.eval()
                 input_tensor = torch.randn(
                     1,
                     3,
                     self.cfg.data.image_size,
                     self.cfg.data.image_size,
                     device=self.device,
+                    requires_grad=True,
                 )
-                with torch.no_grad():
-                    output = self.model(input_tensor)
+                output = self.model(input_tensor)
                 graph = make_dot(output, params=dict(self.model.named_parameters()))
                 graph_path = run_root / "model_architecture"
-                graph.render(str(graph_path), format="png", cleanup=True)
-                self.logger.info(f"Saved torchviz architecture graph to {graph_path.with_suffix('.png')}")
+                graph.render(str(graph_path), format="svg", cleanup=True)
+                self.logger.info(f"Saved torchviz architecture graph to {graph_path.with_suffix('.svg')}")
+                del output, graph, input_tensor
             except Exception as exc:  # pragma: no cover - diagnostic
                 self.logger.warning(f"Failed to render torchviz graph: {exc}")
         else:
             self.logger.debug("torchviz not installed; skipping architecture graph.")
+
+        # High level graphviz diagram
+        self._render_high_level_architecture(run_root)
         self.model.train(was_training)
+
+    def _render_high_level_architecture(self, run_root: Path) -> None:
+        """Render a simplified block diagram of the segmentation model."""
+        if graphviz is None:
+            self.logger.debug("graphviz not installed; skipping high-level architecture diagram.")
+            return
+
+        try:
+            dot = graphviz.Digraph(
+                comment="Segmentation Architecture",
+                format="svg",
+                graph_attr={
+                    "rankdir": "TB",
+                    "splines": "spline",
+                    "fontsize": "11",
+                    "fontname": "Helvetica Neue",
+                },
+                node_attr={
+                    "shape": "rectangle",
+                    "style": "rounded,filled",
+                    "color": "#4a6fa5",
+                    "fillcolor": "#e8f1fb",
+                    "fontname": "Helvetica Neue",
+                    "fontsize": "11",
+                },
+                edge_attr={
+                    "color": "#4a6fa5",
+                    "arrowsize": "0.7",
+                },
+            )
+
+            dot.node("input", f"Input\n3×{self.cfg.data.image_size}×{self.cfg.data.image_size}", shape="parallelogram", fillcolor="#f6ede4", color="#c97b3d")
+            dot.node("backbone", f"Backbone\n{self.cfg.model.backbone.name}", fillcolor="#d8e6f5")
+            dot.node("bottleneck", "Bottleneck\n256×16×16", fillcolor="#d8e6f5")
+            dot.node("dec4", "Decoder Block 4\n128×32×32")
+            dot.node("dec3", "Decoder Block 3\n64×64×64")
+            dot.node("dec2", "Decoder Block 2\n64×128×128")
+            dot.node("dec1", "Decoder Block 1\n64×256×256")
+            dot.node("head", "Head\n1×256×256", fillcolor="#f6ede4", color="#c97b3d")
+            dot.node("output", "Tamper Mask\n(256×256)", shape="parallelogram", fillcolor="#f6ede4", color="#c97b3d")
+
+            dot.edge("input", "backbone")
+            dot.edge("backbone", "bottleneck")
+            dot.edge("bottleneck", "dec4")
+            dot.edge("dec4", "dec3")
+            dot.edge("dec3", "dec2")
+            dot.edge("dec2", "dec1")
+            dot.edge("dec1", "head")
+            dot.edge("head", "output")
+
+            # Add skip connections as annotations
+            with dot.subgraph(name="cluster_skips") as c:
+                c.attr(label="Skip Connections", color="#ffffff", fontcolor="#4a6fa5", fontsize="10")
+                c.node_attr.update(shape="note", fillcolor="#fff4cc", color="#edb458")
+                c.edge_attr.update(style="dashed", color="#edb458")
+                c.node("skip1", "Skip 1\n64×256×256")
+                c.node("skip2", "Skip 2\n64×128×128")
+                c.node("skip3", "Skip 3\n64×64×64")
+                c.node("skip4", "Skip 4\n128×32×32")
+                c.edge("skip4", "dec4")
+                c.edge("skip3", "dec3")
+                c.edge("skip2", "dec2")
+                c.edge("skip1", "dec1")
+
+            output_path = run_root / "model_architecture_highlevel"
+            dot.render(str(output_path), cleanup=True)
+            self.logger.info(f"Saved high-level architecture diagram to {output_path.with_suffix('.svg')}")
+        except Exception as exc:  # pragma: no cover - diagnostic
+            self.logger.warning(f"Failed to render high-level architecture diagram: {exc}")
 
     def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
         """Log tensor shapes through the backbone and decoder for a single batch."""
