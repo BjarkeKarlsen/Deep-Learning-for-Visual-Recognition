@@ -69,8 +69,9 @@ pip install -e .
   - `--task segmentation --env test` → `configs/segmentation.yaml`
 - `src/deepfake/config/default.yaml` holds the baseline values. Copy a config from `configs/` if you need a custom variant (e.g. `cp configs/classification.yaml configs/classification-large.yaml`) and edit the copy.
 - Paths are derived inside the config via `paths.*`; no need to supply extra CLI flags. Each run gets a timestamped root (`paths.run_id`) under `outputs/<task>/runs/`.
-- `data.use_streaming` is supported but may fall back to local caching depending on the Hugging Face dataset backend.
-- `data.augment` enables optional training-time augmentations (e.g., random crops/flips/jitter) when `enable: true`; set `preview_samples` to dump an `augmentation_preview.png` in the run folder.
+- `data.use_streaming` switches the loaders into Hugging Face streaming mode. Keep the per-split sample caps finite—the manager buffers the requested amount into memory before handing it to PyTorch.
+- `data.use_disk_cache` is currently a no-op and kept only for backwards compatibility with older configs.
+- `data.augment` enables optional training-time augmentations (e.g., random crops/flips/jitter) when `enable: true`; set `preview_samples` to dump an augmentation preview image in the run folder.
 - `training.label_smoothing`, `training.grad_clip_norm`, and `training.ema_decay` tighten optimisation; use `training.scheduler.name: "cosine"` (or `onecycle`) to enable LR schedules.
 
 See `docs/Configuration.md` for field-by-field details.
@@ -194,6 +195,6 @@ The tuner samples learning-rate schedule parameters, optimiser regularisation, a
 ## 5. Troubleshooting & Tips
 
 - Set `training.seed` in your YAML to reproduce runs; the CLI applies it at startup.
-- For large streaming jobs, keep `data.use_disk_cache: true` to avoid re-materialising derived splits.
+- When streaming, ensure `data.train_samples`, `data.val_samples`, and `data.test_samples` are set to realistic limits so the loader can materialise the stream.
 - Authenticate with `huggingface-cli login` if the dataset requires credentials.
 - Use `python -m deepfake.utils.config_loader --config <path>` to print the merged configuration for debugging.
