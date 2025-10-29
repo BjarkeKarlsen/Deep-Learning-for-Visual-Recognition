@@ -77,6 +77,11 @@ class SchedulerConfig:
     final_div_factor: float = 10000.0
 
 @dataclass
+class LossConfig:
+    bce_weight: float = 0.5
+    dice_weight: float = 0.5
+
+@dataclass
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
@@ -89,6 +94,7 @@ class TrainingConfig:
     ema_decay: float = 0.0
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    loss: LossConfig = field(default_factory=LossConfig)
 
 @dataclass
 class PathsConfig:

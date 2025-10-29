@@ -1,42 +1,46 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 128
-  train_samples: 100
-  val_samples: 1
-  test_samples: 1
-  use_streaming: true
+  image_size: 512
+  train_samples: 1000
+  val_samples: 100
+  test_samples: 100
+  use_streaming: false
   use_disk_cache: true
   augment:
-    enable: false
-    random_resized_crop: false
-    scale_min: 0.9
+    enable: true
+    random_resized_crop: true
+    scale_min: 0.6
     scale_max: 1.0
     horizontal_flip_prob: 0.5
-    color_jitter_brightness: 0.0
-    color_jitter_contrast: 0.0
-    color_jitter_saturation: 0.0
-    color_jitter_hue: 0.0
-    gaussian_blur_prob: 0.0
+    color_jitter_brightness: 0.1
+    color_jitter_contrast: 0.1
+    color_jitter_saturation: 0.05
+    color_jitter_hue: 0.02
+    gaussian_blur_prob: 0.1
     gaussian_blur_sigma_min: 0.1
-    gaussian_blur_sigma_max: 2.0
-    random_erasing_prob: 0.0
-    random_erasing_scale_min: 0.02
-    random_erasing_scale_max: 0.2
+    gaussian_blur_sigma_max: 1.0
+    random_erasing_prob: 0.05
+    random_erasing_scale_min: 0.01
+    random_erasing_scale_max: 0.1
     random_erasing_ratio_min: 0.3
     random_erasing_ratio_max: 3.3
-    preview_samples: 0
+    preview_samples: 8
     preview_seed: 1234
 
 loader:
-  batch_size: 10
+  batch_size: 4
   shuffle_train: true
   shuffle_val: false
   shuffle_test: false
-  num_workers: 0
+  num_workers: 8
   prefetch_factor: 2
   persistent_workers: false
 
 model:
+  class_names:
+    - Real
+    - Synthetic
+    - Tampered
   tampered_label: 2
   normalize_mean:
     - 0.485
@@ -52,13 +56,28 @@ training:
   learning_rate: 0.0005
   seed: 42
   checkpoint_frequency: 5
-  keep_checkpoints: 3   
+  keep_checkpoints: 3
+  label_smoothing: 0.0
+  grad_clip_norm: 1.0
+  ema_decay: 0.0
   optimizer:
     name: adamw
     weight_decay: 0.01
     betas:
       - 0.9
       - 0.95
+    momentum: 0.9
+    nesterov: false
+  scheduler:
+    name: onecycle
+    t_max: 0
+    max_lr: 0.0015
+    pct_start: 0.3
+    div_factor: 25.0
+    final_div_factor: 10000.0
+  loss:
+    bce_weight: 0.3
+    dice_weight: 0.7
 
 paths:
   base: outputs
@@ -67,4 +86,5 @@ paths:
   history_filename: history.json
   metrics_filename: evaluation_metrics.json
   log_filename: logs
+  args_filename: args.json
   checkpoints: checkpoints

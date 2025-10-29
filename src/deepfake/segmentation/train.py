@@ -1,4 +1,3 @@
-import os
 from dataclasses import asdict
 from typing import Dict, Any, Optional
 
@@ -21,7 +20,7 @@ from deepfake.utils.logger import SidLogger
 from deepfake.utils.training_metrics_tracker import TrainingMetrics, TrainingMetricsTracker
 from deepfake.utils.scheduler_factory import SchedulerFactory
 from deepfake.visualization.segmentation_plots import SegmentationPlots
-from .dice_coefficient import dice_coefficient
+from .dice_coefficient import dice_coefficient, soft_dice_loss
 from deepfake.utils.augmentation_factory import build_segmentation_transforms
 
 class Trainer:
@@ -46,7 +45,14 @@ class Trainer:
 
         # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
         self.model = TamperSegmentationModel(in_channels=3, out_channels=1).to(self.device)
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        loss_cfg = getattr(cfg.training, "loss", None)
+        self.bce_weight = getattr(loss_cfg, "bce_weight", 0.5)
+        self.dice_weight = getattr(loss_cfg, "dice_weight", 0.5)
+        total_weight = self.bce_weight + self.dice_weight
+        if total_weight > 0:
+            self.bce_weight /= total_weight
+            self.dice_weight /= total_weight
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.amp_enabled = (self.device.type == "cuda" and torch.cuda.is_available())
         self.scaler = GradScaler(enabled=self.amp_enabled)
@@ -180,7 +186,9 @@ class Trainer:
             # ENABLE MIXED PRECISION FOR FASTER FORWARD AND REDUCED MEMORY
             with autocast(device_type=self.device.type, enabled=self.amp_enabled):
                 logits = self.model(images)
-                loss = self.criterion(logits, masks)
+                bce = self.bce_weight * self.bce_loss(logits, masks)
+                dice = self.dice_weight * soft_dice_loss(logits, masks)
+                loss = bce + dice
             
             # SCALE LOSS AND BACKWARD FOR STABLE MIXED-PRECISION TRAINING    
             self.scaler.scale(loss).backward()
@@ -227,7 +235,9 @@ class Trainer:
                 
                 # FORWARD PASS THROUGH SEGMENTATION MODEL
                 logits = self.model(images)
-                loss = self.criterion(logits, masks)
+                bce = self.bce_weight * self.bce_loss(logits, masks)
+                dice = self.dice_weight * soft_dice_loss(logits, masks)
+                loss = bce + dice
                 
                 # ACCUMULATE LOSS AND DICE SCORE
                 batch_elements = masks.numel()

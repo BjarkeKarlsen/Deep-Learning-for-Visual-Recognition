@@ -1,6 +1,6 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 224
+  image_size: 256
   train_samples: 100000
   val_samples: 5000
   test_samples: 5000
