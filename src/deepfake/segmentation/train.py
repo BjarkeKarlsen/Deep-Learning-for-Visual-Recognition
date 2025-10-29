@@ -328,6 +328,13 @@ class Trainer:
 
     def _log_model_summary(self) -> None:
         """Log high-level architecture details and parameter counts."""
+        def _fmt_param_count(count: int) -> str:
+            if count >= 1_000_000:
+                return f"{count/1_000_000:.2f}M"
+            if count >= 1_000:
+                return f"{count/1_000:.2f}K"
+            return f"{count}"
+
         try:
             arch_lines = str(self.model).splitlines()
             if arch_lines:
@@ -356,13 +363,17 @@ class Trainer:
 
         frozen_params = total_params - trainable_params
         self.logger.info(
-            f"Parameter summary -> total: {total_params/1e6:.2f}M | "
-            f"trainable: {trainable_params/1e6:.2f}M | frozen: {frozen_params/1e6:.2f}M"
+            "Parameter summary -> "
+            f"total: {_fmt_param_count(total_params)} ({total_params}) | "
+            f"trainable: {_fmt_param_count(trainable_params)} ({trainable_params}) | "
+            f"frozen: {_fmt_param_count(frozen_params)} ({frozen_params})"
         )
         for prefix, stats in sorted(component_stats.items()):
+            frozen = stats['total'] - stats['trainable']
             self.logger.info(
-                f"  {prefix:<12} :: total={stats['total']/1e6:.3f}M | "
-                f"trainable={stats['trainable']/1e6:.3f}M | frozen={(stats['total']-stats['trainable'])/1e6:.3f}M"
+                f"  {prefix:<12} :: total={_fmt_param_count(stats['total'])} ({stats['total']}) | "
+                f"trainable={_fmt_param_count(stats['trainable'])} ({stats['trainable']}) | "
+                f"frozen={_fmt_param_count(frozen)} ({frozen})"
             )
 
     def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
