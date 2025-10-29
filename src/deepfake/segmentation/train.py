@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from typing import Dict, Any, Optional, List
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -22,6 +23,16 @@ from deepfake.utils.scheduler_factory import SchedulerFactory
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 from .dice_coefficient import dice_coefficient, soft_dice_loss
 from deepfake.utils.augmentation_factory import build_segmentation_transforms
+
+try:
+    from torchinfo import summary as torchinfo_summary  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    torchinfo_summary = None  # type: ignore
+
+try:
+    from torchviz import make_dot  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    make_dot = None  # type: ignore
 
 class Trainer:
     """
@@ -46,6 +57,7 @@ class Trainer:
         # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
         self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self._log_model_summary()
+        self._save_model_visualizations()
         self.bce_loss = nn.BCEWithLogitsLoss()
         loss_cfg = getattr(cfg.training, "loss", None)
         self.bce_weight = getattr(loss_cfg, "bce_weight", 0.5)
@@ -375,6 +387,58 @@ class Trainer:
                 f"trainable={_fmt_param_count(stats['trainable'])} ({stats['trainable']}) | "
                 f"frozen={_fmt_param_count(frozen)} ({frozen})"
             )
+
+    def _save_model_visualizations(self) -> None:
+        """Persist torchinfo summary and torchviz graph into the run directory."""
+        run_root = Path(self.cfg.paths.run_root)
+        run_root.mkdir(parents=True, exist_ok=True)
+
+        was_training = self.model.training
+        self.model.eval()
+        # Torchinfo summary
+        if torchinfo_summary is not None:
+            try:
+                input_size = (1, 3, self.cfg.data.image_size, self.cfg.data.image_size)
+                summary_text = str(
+                    torchinfo_summary(
+                        self.model,
+                        input_size=input_size,
+                        device=str(self.device),
+                        verbose=0,
+                        col_names=("input_size", "output_size", "num_params", "mult_adds"),
+                    )
+                )
+                summary_path = run_root / "model_summary.txt"
+                summary_path.write_text(summary_text)
+                self.logger.info(f"Wrote torchinfo summary to {summary_path}")
+            except Exception as exc:  # pragma: no cover - diagnostic
+                self.logger.warning(f"Failed to save torchinfo summary: {exc}")
+        else:
+            self.logger.debug("torchinfo not installed; skipping textual model summary.")
+
+        # Torchviz computation graph
+        if make_dot is not None:
+            try:
+                was_training = self.model.training
+                self.model.eval()
+                input_tensor = torch.randn(
+                    1,
+                    3,
+                    self.cfg.data.image_size,
+                    self.cfg.data.image_size,
+                    device=self.device,
+                )
+                with torch.no_grad():
+                    output = self.model(input_tensor)
+                graph = make_dot(output, params=dict(self.model.named_parameters()))
+                graph_path = run_root / "model_architecture"
+                graph.render(str(graph_path), format="png", cleanup=True)
+                self.logger.info(f"Saved torchviz architecture graph to {graph_path.with_suffix('.png')}")
+            except Exception as exc:  # pragma: no cover - diagnostic
+                self.logger.warning(f"Failed to render torchviz graph: {exc}")
+        else:
+            self.logger.debug("torchviz not installed; skipping architecture graph.")
+        self.model.train(was_training)
 
     def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
         """Log tensor shapes through the backbone and decoder for a single batch."""
