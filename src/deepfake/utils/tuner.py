@@ -99,6 +99,12 @@ def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
 
 def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
     # DEFINE SEARCH SPACE FOR SEGMENTATION EXPERIMENTS.
+    bce_weight = trial.suggest_float("bce_weight", 0.3, 0.7)
+    scale_min = trial.suggest_float("scale_min", 0.6, 0.9)
+    scale_delta = trial.suggest_float("scale_delta", 0.05, 0.3)
+    scale_max = min(1.2, scale_min + scale_delta)
+    flip_prob = trial.suggest_float("horizontal_flip_prob", 0.3, 0.7)
+
     return {
         "training": {
             "learning_rate": trial.suggest_float("base_lr", 5e-4, 2e-3, log=True),
@@ -111,10 +117,17 @@ def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
                 "pct_start": trial.suggest_float("pct_start", 0.1, 0.4),
                 "div_factor": trial.suggest_float("div_factor", 10.0, 30.0),
             },
+            "loss": {
+                "bce_weight": bce_weight,
+                "dice_weight": 1.0 - bce_weight,
+            },
         },
         "data": {
             "augment": {
-                "gaussian_blur_prob": trial.suggest_float("blur_prob", 0.0, 0.3),
+                "gaussian_blur_prob": trial.suggest_float("blur_prob", 0.0, 0.25),
+                "scale_min": scale_min,
+                "scale_max": scale_max,
+                "horizontal_flip_prob": flip_prob,
             }
         },
     }
