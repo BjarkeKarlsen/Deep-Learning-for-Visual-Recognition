@@ -29,16 +29,6 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     torchinfo_summary = None  # type: ignore
 
-try:
-    from torchviz import make_dot  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    make_dot = None  # type: ignore
-
-try:
-    import graphviz  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    graphviz = None  # type: ignore
-
 class Trainer:
     """
     Class-based trainer for tamper segmentation with mixed precision,
@@ -420,114 +410,50 @@ class Trainer:
                 self.logger.warning(f"Failed to save torchinfo summary: {exc}")
         else:
             self.logger.debug("torchinfo not installed; skipping textual model summary.")
-
-        # Torchviz computation graph
-        if make_dot is not None:
-            try:
-                input_tensor = torch.randn(
-                    1,
-                    3,
-                    self.cfg.data.image_size,
-                    self.cfg.data.image_size,
-                    device=self.device,
-                    requires_grad=True,
-                )
-                output = self.model(input_tensor)
-                graph = make_dot(output, params=dict(self.model.named_parameters()))
-                graph_path = run_root / "model_architecture"
-                graph.render(str(graph_path), format="svg", cleanup=True)
-                self.logger.info(f"Saved torchviz architecture graph to {graph_path.with_suffix('.svg')}")
-                del output, graph, input_tensor
-            except Exception as exc:  # pragma: no cover - diagnostic
-                self.logger.warning(f"Failed to render torchviz graph: {exc}")
-        else:
-            self.logger.debug("torchviz not installed; skipping architecture graph.")
-
-        # High level graphviz diagram
-        self._render_high_level_architecture(run_root)
         self.model.train(was_training)
-
-    def _render_high_level_architecture(self, run_root: Path) -> None:
-        """Render a simplified block diagram of the segmentation model."""
-        if graphviz is None:
-            self.logger.debug("graphviz not installed; skipping high-level architecture diagram.")
-            return
-
-        try:
-            dot = graphviz.Digraph(
-                comment="Segmentation Architecture",
-                format="svg",
-                graph_attr={
-                    "rankdir": "LR",
-                    "splines": "spline",
-                    "fontsize": "11",
-                    "fontname": "Helvetica Neue",
-                    "pad": "0.4",
-                },
-                node_attr={
-                    "shape": "rectangle",
-                    "style": "rounded,filled",
-                    "color": "#3f6aa6",
-                    "fillcolor": "#e4edf9",
-                    "fontname": "Helvetica Neue",
-                    "fontsize": "11",
-                },
-                edge_attr={
-                    "color": "#3f6aa6",
-                    "arrowsize": "0.9",
-                    "penwidth": "1.2",
-                },
-            )
-
-            dot.node("input", f"Input\n3×{self.cfg.data.image_size}×{self.cfg.data.image_size}", shape="parallelogram", fillcolor="#f9ede3", color="#d28a3a")
-            dot.node("enc1", "Encoder Block 1\n64×128×128")
-            dot.node("enc2", "Encoder Block 2\n128×64×64")
-            dot.node("bottleneck", "Bottleneck\n256×32×32", fillcolor="#cdddf4")
-            dot.node("dec2", "Decoder Block 2\n64×64×64", fillcolor="#f2f7fd")
-            dot.node("dec1", "Decoder Block 1\n64×128×128", fillcolor="#f2f7fd")
-            dot.node("head", "Output Conv\n1×256×256", fillcolor="#f9ede3", color="#d28a3a")
-            dot.node("output", "Tamper Mask\n256×256", shape="parallelogram", fillcolor="#f9ede3", color="#d28a3a")
-
-            dot.edge("input", "enc1")
-            dot.edge("enc1", "enc2")
-            dot.edge("enc2", "bottleneck")
-            dot.edge("bottleneck", "dec2")
-            dot.edge("dec2", "dec1")
-            dot.edge("dec1", "head")
-            dot.edge("head", "output")
-
-            dot.edge("enc1", "dec1", style="dashed", color="#d3a44c", penwidth="1.2", arrowsize="0.7")
-            dot.edge("enc2", "dec2", style="dashed", color="#d3a44c", penwidth="1.2", arrowsize="0.7")
-
-            dot.body.append("{rank=same; enc1; dec1}")
-            dot.body.append("{rank=same; enc2; dec2}")
-
-            output_path = run_root / "model_architecture_highlevel"
-            dot.render(str(output_path), cleanup=True)
-            self.logger.info(f"Saved high-level architecture diagram to {output_path.with_suffix('.svg')}")
-        except Exception as exc:  # pragma: no cover - diagnostic
-            self.logger.warning(f"Failed to render high-level architecture diagram: {exc}")
 
     def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
         """Log tensor shapes through the backbone and decoder for a single batch."""
-        try:
-            iterator = iter(loader)
-            batch = next(iterator)
-        except StopIteration:
-            self.logger.warning("Unable to log shape snapshot: training loader is empty")
+        dataset = getattr(loader, "dataset", None)
+        if dataset is None:
+            self.logger.warning("Shape snapshot skipped: loader has no dataset attribute")
             return
-        except Exception as exc:
-            self.logger.warning(f"Unable to create loader iterator for shape snapshot: {exc}")
+        # Iterable datasets cannot be indexed; skip to avoid side effects with worker teardown.
+        from torch.utils.data import IterableDataset  # local import to keep optional dependency light
+
+        if isinstance(dataset, IterableDataset):
+            self.logger.debug("Shape snapshot skipped: dataset is iterable-only")
             return
 
-        images = batch.get("image")
-        if images is None:
-            self.logger.warning("Shape snapshot skipped: batch lacks 'image' tensor")
+        try:
+            if len(dataset) == 0:  # type: ignore[arg-type]
+                self.logger.warning("Shape snapshot skipped: dataset is empty")
+                return
+        except TypeError:
+            self.logger.debug("Shape snapshot skipped: dataset length unavailable")
             return
+
+        try:
+            sample_item = dataset[0]
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self.logger.warning(f"Failed to index dataset for shape snapshot: {exc}")
+            return
+
+        image_tensor = sample_item.get("image")
+        if image_tensor is None:
+            self.logger.warning("Shape snapshot skipped: dataset sample lacks 'image'")
+            return
+        if not isinstance(image_tensor, torch.Tensor):
+            try:
+                image_tensor = torch.as_tensor(image_tensor)
+            except Exception as exc:
+                self.logger.warning(f"Shape snapshot skipped: unable to convert image to tensor ({exc})")
+                return
+
+        sample = image_tensor.unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             try:
-                sample = images[:1].to(self.device)
                 skips, deep = self.model.backbone(sample)
                 self.logger.info("Forward shape snapshot (single sample):")
                 for idx, skip in enumerate(skips):
