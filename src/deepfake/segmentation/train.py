@@ -45,6 +45,7 @@ class Trainer:
 
         # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
         self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
+        self._log_model_summary()
         self.bce_loss = nn.BCEWithLogitsLoss()
         loss_cfg = getattr(cfg.training, "loss", None)
         self.bce_weight = getattr(loss_cfg, "bce_weight", 0.5)
@@ -90,6 +91,7 @@ class Trainer:
         
         # PREPARE LOADER PAIRS FILTERED TO TAMPERED SAMPLES WITH MASKS.
         train_loader, val_loader = self._load_data()
+        self._log_forward_shape_snapshot(train_loader)
 
         try:
             steps_per_epoch = len(train_loader)
@@ -323,6 +325,90 @@ class Trainer:
         if stage_summaries:
             breakdown = ", ".join(stage_summaries)
             self.logger.info(f"Backbone stage breakdown -> {breakdown}")
+
+    def _log_model_summary(self) -> None:
+        """Log high-level architecture details and parameter counts."""
+        try:
+            arch_lines = str(self.model).splitlines()
+            if arch_lines:
+                header = ["Model architecture (top level):"]
+                for line in arch_lines[:40]:  # trim extremely long dumps
+                    header.append(f"  {line}")
+                if len(arch_lines) > 40:
+                    header.append("  ... (truncated)")
+                self.logger.info("\n".join(header))
+        except Exception as exc:
+            self.logger.warning(f"Failed to stringify model architecture: {exc}")
+
+        total_params = 0
+        trainable_params = 0
+        component_stats: Dict[str, Dict[str, int]] = {}
+        for name, param in self.model.named_parameters():
+            count = param.numel()
+            total_params += count
+            if param.requires_grad:
+                trainable_params += count
+            prefix = name.split(".", 1)[0]
+            stats = component_stats.setdefault(prefix, {"total": 0, "trainable": 0})
+            stats["total"] += count
+            if param.requires_grad:
+                stats["trainable"] += count
+
+        frozen_params = total_params - trainable_params
+        self.logger.info(
+            f"Parameter summary -> total: {total_params/1e6:.2f}M | "
+            f"trainable: {trainable_params/1e6:.2f}M | frozen: {frozen_params/1e6:.2f}M"
+        )
+        for prefix, stats in sorted(component_stats.items()):
+            self.logger.info(
+                f"  {prefix:<12} :: total={stats['total']/1e6:.3f}M | "
+                f"trainable={stats['trainable']/1e6:.3f}M | frozen={(stats['total']-stats['trainable'])/1e6:.3f}M"
+            )
+
+    def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
+        """Log tensor shapes through the backbone and decoder for a single batch."""
+        try:
+            iterator = iter(loader)
+            batch = next(iterator)
+        except StopIteration:
+            self.logger.warning("Unable to log shape snapshot: training loader is empty")
+            return
+        except Exception as exc:
+            self.logger.warning(f"Unable to create loader iterator for shape snapshot: {exc}")
+            return
+
+        images = batch.get("image")
+        if images is None:
+            self.logger.warning("Shape snapshot skipped: batch lacks 'image' tensor")
+            return
+
+        with torch.no_grad():
+            try:
+                sample = images[:1].to(self.device)
+                skips, deep = self.model.backbone(sample)
+                self.logger.info("Forward shape snapshot (single sample):")
+                for idx, skip in enumerate(skips):
+                    self.logger.info(f"  skip{idx+1}: {tuple(skip.shape)}")
+
+                h = self.model.bottleneck(deep)
+                self.logger.info(f"  bottleneck: {tuple(h.shape)}")
+
+                h = self.model.dec4(h, skips[3])
+                self.logger.info(f"  dec4: {tuple(h.shape)}")
+
+                h = self.model.dec3(h, skips[2])
+                self.logger.info(f"  dec3: {tuple(h.shape)}")
+
+                h = self.model.dec2(h, skips[1])
+                self.logger.info(f"  dec2: {tuple(h.shape)}")
+
+                h = self.model.dec1(h, skips[0])
+                self.logger.info(f"  dec1: {tuple(h.shape)}")
+
+                logits = self.model.head(h)
+                self.logger.info(f"  head logits: {tuple(logits.shape)}")
+            except Exception as exc:
+                self.logger.warning(f"Failed to log forward shape snapshot: {exc}")
     
     def _load_data(self):
         """Prepare train/validation datasets and wrap them in DataLoaders."""
