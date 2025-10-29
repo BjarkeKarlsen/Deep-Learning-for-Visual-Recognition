@@ -1,9 +1,9 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 512
-  train_samples: 2000
-  val_samples: 200
-  test_samples: 200
+  image_size: 256
+  train_samples: 1000
+  val_samples: 100
+  test_samples: 100
   use_streaming: false
   use_disk_cache: true
   augment:
