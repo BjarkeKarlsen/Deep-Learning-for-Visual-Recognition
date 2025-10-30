@@ -214,7 +214,17 @@ class SegmentationPlots(CommonPlots):
         val_dice = pad_curve(raw_val_dice, n_epochs)
 
         extra_head_losses = any(
-            key in curves for key in ("train_bce_loss", "train_dice_loss", "val_bce_loss", "val_dice_loss")
+            key in curves
+            for key in (
+                "train_bce_weighted",
+                "train_dice_weighted",
+                "val_bce_weighted",
+                "val_dice_weighted",
+                "train_bce_raw",
+                "train_dice_raw",
+                "val_bce_raw",
+                "val_dice_raw",
+            )
         )
         num_panels = 3 if extra_head_losses else 2
         fig, axes = plt.subplots(1, num_panels, figsize=(7 * num_panels, 6))
@@ -340,63 +350,52 @@ class SegmentationPlots(CommonPlots):
             ax2.set_ylim(0, 1.02)
 
         if ax3 is not None:
-            if 'train_bce_loss' in curves or 'train_dice_loss' in curves:
-                if 'train_bce_loss' in curves:
-                    train_bce = np.asarray(pad_curve(curves.get('train_bce_loss', []), n_epochs), dtype=float)
+            component_keys = (
+                "train_bce_weighted",
+                "val_bce_weighted",
+                "train_dice_weighted",
+                "val_dice_weighted",
+                "train_bce_raw",
+                "val_bce_raw",
+                "train_dice_raw",
+                "val_dice_raw",
+            )
+            if any(key in curves for key in component_keys):
+                def _plot_series(key: str, label: str, color: str, linestyle: str, marker: str) -> bool:
+                    data = curves.get(key)
+                    if not data:
+                        return False
+                    values = np.asarray(pad_curve(data, n_epochs), dtype=float)
                     ax3.plot(
                         epochs,
-                        train_bce,
-                        color=self.colors["bce_loss"],
-                        marker='o',
-                        markerfacecolor='white',
-                        markeredgecolor=self.colors["bce_loss"],
+                        values,
+                        color=color,
+                        linestyle=linestyle,
                         linewidth=2,
-                        markersize=5,
-                        label='Train BCE',
-                    )
-                if 'val_bce_loss' in curves:
-                    val_bce = np.asarray(pad_curve(curves.get('val_bce_loss', []), n_epochs), dtype=float)
-                    ax3.plot(
-                        epochs,
-                        val_bce,
-                        color=self.colors["bce_loss"],
-                        linestyle='--',
-                        marker='o',
+                        marker=marker,
                         markerfacecolor='white',
-                        markeredgecolor=self.colors["bce_loss"],
-                        linewidth=2,
+                        markeredgecolor=color,
                         markersize=5,
-                        label='Val BCE',
+                        label=label,
                     )
-                if 'train_dice_loss' in curves:
-                    train_dice_loss = np.asarray(pad_curve(curves.get('train_dice_loss', []), n_epochs), dtype=float)
-                    ax3.plot(
-                        epochs,
-                        train_dice_loss,
-                        color=self.colors["dice_loss"],
-                        marker='s',
-                        markerfacecolor='white',
-                        markeredgecolor=self.colors["dice_loss"],
-                        linewidth=2,
-                        markersize=5,
-                        label='Train Dice Loss',
-                    )
-                if 'val_dice_loss' in curves:
-                    val_dice_loss = np.asarray(pad_curve(curves.get('val_dice_loss', []), n_epochs), dtype=float)
-                    ax3.plot(
-                        epochs,
-                        val_dice_loss,
-                        color=self.colors["dice_loss"],
-                        linestyle='--',
-                        marker='s',
-                        markerfacecolor='white',
-                        markeredgecolor=self.colors["dice_loss"],
-                        linewidth=2,
-                        markersize=5,
-                        label='Val Dice Loss',
-                    )
-                self._style_axis(ax3, title='Loss Components', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
-                ax3.legend(loc="upper right", frameon=False)
+                    return True
+
+                any_plotted = False
+                any_plotted |= _plot_series("train_bce_weighted", "Train BCE (weighted)", self.colors["bce_loss"], '-', 'o')
+                any_plotted |= _plot_series("val_bce_weighted", "Val BCE (weighted)", self.colors["bce_loss"], '--', 'o')
+                any_plotted |= _plot_series("train_bce_raw", "Train BCE (raw)", self.colors["bce_loss"], '-.', 'o')
+                any_plotted |= _plot_series("val_bce_raw", "Val BCE (raw)", self.colors["bce_loss"], ':', 'o')
+
+                any_plotted |= _plot_series("train_dice_weighted", "Train Dice (weighted)", self.colors["dice_loss"], '-', 's')
+                any_plotted |= _plot_series("val_dice_weighted", "Val Dice (weighted)", self.colors["dice_loss"], '--', 's')
+                any_plotted |= _plot_series("train_dice_raw", "Train Dice (raw)", self.colors["dice_loss"], '-.', 's')
+                any_plotted |= _plot_series("val_dice_raw", "Val Dice (raw)", self.colors["dice_loss"], ':', 's')
+
+                if any_plotted:
+                    self._style_axis(ax3, title='Loss Components', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
+                    ax3.legend(loc="upper right", frameon=False)
+                else:
+                    ax3.axis("off")
             else:
                 ax3.axis("off")
 

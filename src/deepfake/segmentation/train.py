@@ -75,10 +75,14 @@ class Trainer:
         metric_directions = {
             "train_dice": "max",
             "val_dice": "max",
-            "train_bce_loss": "min",
-            "train_dice_loss": "min",
-            "val_bce_loss": "min",
-            "val_dice_loss": "min",
+            "train_bce_weighted": "min",
+            "train_dice_weighted": "min",
+            "val_bce_weighted": "min",
+            "val_dice_weighted": "min",
+            "train_bce_raw": "min",
+            "train_dice_raw": "min",
+            "val_bce_raw": "min",
+            "val_dice_raw": "min",
         }
         for idx, _ in enumerate(self.optimizer.param_groups):
             metric_directions[f"lr_group_{idx}"] = "last"
@@ -123,10 +127,19 @@ class Trainer:
                 avg_train_loss,
                 avg_train_dice,
                 steps_this_epoch,
-                avg_train_bce_loss,
-                avg_train_dice_loss,
+                avg_train_bce_weighted,
+                avg_train_dice_weighted,
+                avg_train_bce_raw,
+                avg_train_dice_raw,
             ) = self._train_epoch(train_loader, epoch)
-            avg_val_loss, avg_val_dice, avg_val_bce_loss, avg_val_dice_loss = self._evaluation(val_loader)
+            (
+                avg_val_loss,
+                avg_val_dice,
+                avg_val_bce_weighted,
+                avg_val_dice_weighted,
+                avg_val_bce_raw,
+                avg_val_dice_raw,
+            ) = self._evaluation(val_loader)
             
             # Determine previous best before recording current metrics
             prev_best = self.metrics_tracker.get_best_metric("val_dice")
@@ -152,10 +165,14 @@ class Trainer:
                 additional_metrics={
                     "train_dice": avg_train_dice,
                     "val_dice": avg_val_dice,
-                    "train_bce_loss": avg_train_bce_loss,
-                    "train_dice_loss": avg_train_dice_loss,
-                    "val_bce_loss": avg_val_bce_loss,
-                    "val_dice_loss": avg_val_dice_loss,
+                    "train_bce_weighted": avg_train_bce_weighted,
+                    "train_dice_weighted": avg_train_dice_weighted,
+                    "val_bce_weighted": avg_val_bce_weighted,
+                    "val_dice_weighted": avg_val_dice_weighted,
+                    "train_bce_raw": avg_train_bce_raw,
+                    "train_dice_raw": avg_train_dice_raw,
+                    "val_bce_raw": avg_val_bce_raw,
+                    "val_dice_raw": avg_val_dice_raw,
                     **param_group_lrs,
                 }
             ))
@@ -164,9 +181,9 @@ class Trainer:
             self.logger.info(
                 f"Epoch {epoch+1}: "
                 f"train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}, "
-                f"train_bce={avg_train_bce_loss:.4f}, train_dice_loss={avg_train_dice_loss:.4f}, "
+                f"train_bce_w={avg_train_bce_weighted:.4f}, train_dice_w={avg_train_dice_weighted:.4f}, "
                 f"val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}, "
-                f"val_bce={avg_val_bce_loss:.4f}, val_dice_loss={avg_val_dice_loss:.4f}"
+                f"val_bce_w={avg_val_bce_weighted:.4f}, val_dice_w={avg_val_dice_weighted:.4f}"
             )
             
             # SAVE BEST MODEL IF IMPROVED
@@ -214,7 +231,8 @@ class Trainer:
         """Run one training pass over the segmentation dataloader."""
         self.model.train()
         loss_sum, dice_sum, steps = 0.0, 0.0, 0
-        bce_sum, dice_loss_sum = 0.0, 0.0
+        bce_weighted_sum, dice_weighted_sum = 0.0, 0.0
+        bce_raw_sum, dice_raw_sum = 0.0, 0.0
         total_elements = 0
         
         # ITERATE OVER BATCHES WITH A PROGRESS BAR
@@ -230,8 +248,10 @@ class Trainer:
             # ENABLE MIXED PRECISION FOR FASTER FORWARD AND REDUCED MEMORY
             with autocast(device_type=self.device.type, enabled=self.amp_enabled):
                 logits = self.model(images)
-                bce = self.bce_weight * self.bce_loss(logits, masks)
-                dice = self.dice_weight * soft_dice_loss(logits, masks)
+                bce_raw = self.bce_loss(logits, masks)
+                dice_raw = soft_dice_loss(logits, masks)
+                bce = self.bce_weight * bce_raw
+                dice = self.dice_weight * dice_raw
                 loss = bce + dice
             
             # SCALE LOSS AND BACKWARD FOR STABLE MIXED-PRECISION TRAINING    
@@ -248,8 +268,10 @@ class Trainer:
             # UPDATE TRAINING METRICS
             batch_elements = masks.numel()
             loss_sum += loss.item() * batch_elements
-            bce_sum += bce.item() * batch_elements
-            dice_loss_sum += dice.item() * batch_elements
+            bce_weighted_sum += bce.item() * batch_elements
+            dice_weighted_sum += dice.item() * batch_elements
+            bce_raw_sum += bce_raw.item() * batch_elements
+            dice_raw_sum += dice_raw.item() * batch_elements
             total_elements += batch_elements
             dice_sum += dice_coefficient(logits, masks).item()
 
@@ -259,17 +281,27 @@ class Trainer:
             pbar.set_postfix({
                 'loss': f'{loss.item():.3f}',
                 'dice': f'{avg_dice:.3f}',
-                'bce': f'{bce.item():.3f}',
-                'dice_loss': f'{dice.item():.3f}',
+                'bce_w': f'{bce.item():.3f}',
+                'dice_w': f'{dice.item():.3f}',
             })
         
         # CALCULATE AVERAGE METRICS    
         avg_train_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_train_dice = dice_sum / max(steps, 1)
-        avg_train_bce = bce_sum / total_elements if total_elements else float('nan')
-        avg_train_dice_loss = dice_loss_sum / total_elements if total_elements else float('nan')
+        avg_train_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
+        avg_train_dice_weighted = dice_weighted_sum / total_elements if total_elements else float('nan')
+        avg_train_bce_raw = bce_raw_sum / total_elements if total_elements else float('nan')
+        avg_train_dice_raw = dice_raw_sum / total_elements if total_elements else float('nan')
         
-        return avg_train_loss, avg_train_dice, steps, avg_train_bce, avg_train_dice_loss
+        return (
+            avg_train_loss,
+            avg_train_dice,
+            steps,
+            avg_train_bce_weighted,
+            avg_train_dice_weighted,
+            avg_train_bce_raw,
+            avg_train_dice_raw,
+        )
 
     @torch.no_grad() # Optimize memory usage and speed up computations
     def _evaluation(self, val_loader: DataLoader):
@@ -277,7 +309,8 @@ class Trainer:
         
         self.model.eval()
         loss_sum, dice_sum = 0.0, 0.0
-        bce_sum, dice_loss_sum = 0.0, 0.0
+        bce_weighted_sum, dice_weighted_sum = 0.0, 0.0
+        bce_raw_sum, dice_raw_sum = 0.0, 0.0
         total_elements = 0
         steps = 0
         
@@ -289,15 +322,19 @@ class Trainer:
                 
                 # FORWARD PASS THROUGH SEGMENTATION MODEL
                 logits = self.model(images)
-                bce = self.bce_weight * self.bce_loss(logits, masks)
-                dice = self.dice_weight * soft_dice_loss(logits, masks)
+                bce_raw = self.bce_loss(logits, masks)
+                dice_raw = soft_dice_loss(logits, masks)
+                bce = self.bce_weight * bce_raw
+                dice = self.dice_weight * dice_raw
                 loss = bce + dice
                 
                 # ACCUMULATE LOSS AND DICE SCORE
                 batch_elements = masks.numel()
                 loss_sum += loss.item() * batch_elements
-                bce_sum += bce.item() * batch_elements
-                dice_loss_sum += dice.item() * batch_elements
+                bce_weighted_sum += bce.item() * batch_elements
+                dice_weighted_sum += dice.item() * batch_elements
+                bce_raw_sum += bce_raw.item() * batch_elements
+                dice_raw_sum += dice_raw.item() * batch_elements
                 total_elements += batch_elements
                 dice_sum += dice_coefficient(logits, masks).item()
                 steps += 1
@@ -305,10 +342,19 @@ class Trainer:
         # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
         avg_val_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_val_dice = dice_sum / max(steps, 1) if steps else float('nan')
-        avg_val_bce = bce_sum / total_elements if total_elements else float('nan')
-        avg_val_dice_loss = dice_loss_sum / total_elements if total_elements else float('nan')
+        avg_val_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
+        avg_val_dice_weighted = dice_weighted_sum / total_elements if total_elements else float('nan')
+        avg_val_bce_raw = bce_raw_sum / total_elements if total_elements else float('nan')
+        avg_val_dice_raw = dice_raw_sum / total_elements if total_elements else float('nan')
         
-        return avg_val_loss, avg_val_dice, avg_val_bce, avg_val_dice_loss
+        return (
+            avg_val_loss,
+            avg_val_dice,
+            avg_val_bce_weighted,
+            avg_val_dice_weighted,
+            avg_val_bce_raw,
+            avg_val_dice_raw,
+        )
 
     def _log_backbone_trainability(self) -> None:
         """Log how many backbone parameters are trainable to confirm config behaviour."""

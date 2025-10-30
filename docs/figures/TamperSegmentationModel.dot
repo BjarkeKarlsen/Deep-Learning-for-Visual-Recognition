@@ -1,5 +1,5 @@
 digraph TamperSegmentationModel {
-  graph [rankdir=LR, splines=true, nodesep=0.9, ranksep=1.1,
+  graph [rankdir=LR, splines=true, nodesep=0.9, ranksep=1.3,
          fontname="Helvetica", fontsize=14,
          label="TamperSegmentationModel (ResNet34 backbone)", labelloc="t"];
   node  [shape=plaintext, fontname="Helvetica", fontsize=11];
@@ -14,7 +14,7 @@ digraph TamperSegmentationModel {
   >];
 
   InputProj [label=<
-    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Input projection</b></td></tr>
       <tr><td>Conv3×3, BN, ReLU</td></tr>
       <tr><td>B × 64 × 256 × 256</td></tr>
@@ -24,13 +24,13 @@ digraph TamperSegmentationModel {
   Stem [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Stem</b></td></tr>
-      <tr><td>Conv7×7 stride2<br/>BN, ReLU</td></tr>
-      <tr><td>B × 64 × 128 × 128</td></tr>
+      <tr><td>Conv7×7 stride2<br/>BN, ReLU, MaxPool</td></tr>
+      <tr><td>B × 64 × 64 × 64</td></tr>
     </table>
   >];
 
   Layer1 [label=<
-    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Layer1</b></td></tr>
       <tr><td>ResNet blocks ×3</td></tr>
       <tr><td>B × 64 × 64 × 64</td></tr>
@@ -38,7 +38,7 @@ digraph TamperSegmentationModel {
   >];
 
   Layer2 [label=<
-    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Layer2</b></td></tr>
       <tr><td>ResNet blocks ×4<br/>stride=2</td></tr>
       <tr><td>B × 128 × 32 × 32</td></tr>
@@ -46,7 +46,7 @@ digraph TamperSegmentationModel {
   >];
 
   Layer3 [label=<
-    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Layer3</b></td></tr>
       <tr><td>ResNet blocks ×6<br/>stride=2</td></tr>
       <tr><td>B × 256 × 16 × 16</td></tr>
@@ -54,17 +54,26 @@ digraph TamperSegmentationModel {
   >];
 
   Layer4 [label=<
-    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Layer4</b></td></tr>
       <tr><td>ResNet blocks ×3<br/>stride=2</td></tr>
       <tr><td>B × 512 × 8 × 8</td></tr>
     </table>
   >];
 
+  // Corrected Bottleneck Area ----------------------------------------------------
   DeepMerge [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#e2efff">
-      <tr><td><b>Context merge</b></td></tr>
-      <tr><td>Upsample layer4 → 16×16<br/>Conv1×1 reduce + concat</td></tr>
+      <tr><td><b>DeepMerge (in Backbone)</b></td></tr>
+      <tr><td>Upsample Layer4 → Reduce<br/><b>Concat [Layer3, up(Layer4)]</b><br/>→ ConvBlock</td></tr>
+      <tr><td>B × 256 × 16 × 16</td></tr>
+    </table>
+  >];
+
+  Bottleneck [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#e2efff">
+      <tr><td><b>Bottleneck (in Model)</b></td></tr>
+      <tr><td>ConvBlock</td></tr>
       <tr><td>B × 256 × 16 × 16</td></tr>
     </table>
   >];
@@ -73,7 +82,7 @@ digraph TamperSegmentationModel {
   Dec4 [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
       <tr><td><b>DecoderBlock</b> (dec4)</td></tr>
-      <tr><td>Upsample ×2 → Conv1×1 (128)<br/>Concat skip4 (128) → ConvBlock</td></tr>
+      <tr><td>Upsample → Reduce<br/>Concat skip4 (128) → ConvBlock</td></tr>
       <tr><td>B × 128 × 32 × 32</td></tr>
     </table>
   >];
@@ -81,7 +90,7 @@ digraph TamperSegmentationModel {
   Dec3 [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
       <tr><td><b>DecoderBlock</b> (dec3)</td></tr>
-      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip3 (64) → ConvBlock</td></tr>
+      <tr><td>Upsample → Reduce<br/>Concat skip3 (64) → ConvBlock</td></tr>
       <tr><td>B × 64 × 64 × 64</td></tr>
     </table>
   >];
@@ -89,7 +98,7 @@ digraph TamperSegmentationModel {
   Dec2 [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
       <tr><td><b>DecoderBlock</b> (dec2)</td></tr>
-      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip2 (64) → ConvBlock</td></tr>
+      <tr><td>Upsample → Reduce<br/>Concat skip2 (64) → ConvBlock</td></tr>
       <tr><td>B × 64 × 128 × 128</td></tr>
     </table>
   >];
@@ -97,7 +106,7 @@ digraph TamperSegmentationModel {
   Dec1 [label=<
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
       <tr><td><b>DecoderBlock</b> (dec1)</td></tr>
-      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip1 (64) → ConvBlock</td></tr>
+      <tr><td>Upsample → Reduce<br/>Concat skip1 (64) → ConvBlock</td></tr>
       <tr><td>B × 64 × 256 × 256</td></tr>
     </table>
   >];
@@ -116,35 +125,46 @@ digraph TamperSegmentationModel {
     </table>
   >];
 
-  // Encoder edges
+  // CORRECTED EDGES
+  // Main encoder path (now starts from Input)
   edge [color="#cc4d4d"];
-  Input -> InputProj -> Stem -> Layer1 -> Layer2 -> Layer3 -> Layer4 -> DeepMerge;
+  Input -> Stem -> Layer1 -> Layer2 -> Layer3 -> Layer4;
 
-  // Decoder edges
+  // Bottleneck fusion edges
+  edge [color="#9932CC"]; // Purple for fusion
+  Layer3 -> DeepMerge [constraint=false];
+  Layer4 -> DeepMerge;
+  DeepMerge -> Bottleneck;
+
+  // Decoder path
   edge [color="#2e8b57"];
-  DeepMerge -> Dec4 -> Dec3 -> Dec2 -> Dec1 -> Head -> Output;
+  Bottleneck -> Dec4 -> Dec3 -> Dec2 -> Dec1 -> Head -> Output;
 
-  // Skip connections
+  // Skip connections and their origins
   edge [color="#4a74c1", style=dashed];
-  Layer2 -> Dec4 [label="skip4", constraint=false];
-  Layer1 -> Dec3 [label="skip3", constraint=false];
-  Stem    -> Dec2 [label="skip2", constraint=false];
+  Input -> InputProj; // Path to create the skip1 features
   InputProj -> Dec1 [label="skip1", constraint=false];
+  
+  Stem -> Dec2 [label="skip2 (from H/2 features)", constraint=false];
+  Layer1 -> Dec3 [label="skip3", constraint=false];
+  Layer2 -> Dec4 [label="skip4", constraint=false];
+
 
   // Rank alignment for U shape
-  {rank=same; Input; InputProj; Dec1; Head; Output}
+  {rank=same; Input; Output}
+  {rank=same; InputProj; Dec1; Head}
   {rank=same; Stem; Dec2}
   {rank=same; Layer1; Dec3}
   {rank=same; Layer2; Dec4}
-  {rank=same; Layer3; Layer4; DeepMerge}
+  {rank=same; Layer3; Layer4; DeepMerge; Bottleneck}
 
   Legend [shape=plaintext, fontsize=10, label=<
-    <table border="0" cellborder="0" cellspacing="1" cellpadding="0" align="left">
-      <tr><td align="left"><b>Legend</b></td></tr>
-      <tr><td align="left">Red edges: encoder (ResNet34) stages</td></tr>
-      <tr><td align="left">Green edges: decoder blocks</td></tr>
-      <tr><td align="left">Blue dashed edges: skip connections (concat before ConvBlock)</td></tr>
-      <tr><td align="left">DeepMerge combines Layer3 and upsampled Layer4 (context)</td></tr>
+    <table border="0" cellborder="0" cellspacing="2" cellpadding="1" align="left">
+      <tr><td align="left" colspan="2"><b>Legend</b></td></tr>
+      <tr><td BORDER="1" BGCOLOR="#cc4d4d" width="15"></td><td align="left">Encoder (ResNet34) path</td></tr>
+      <tr><td BORDER="1" BGCOLOR="#9932CC" width="15"></td><td align="left">Feature fusion path</td></tr>
+      <tr><td BORDER="1" BGCOLOR="#2e8b57" width="15"></td><td align="left">Decoder path</td></tr>
+      <tr><td BORDER="1" BGCOLOR="#4a74c1" width="15"></td><td align="left">Skip connections</td></tr>
     </table>
   >];
 }
