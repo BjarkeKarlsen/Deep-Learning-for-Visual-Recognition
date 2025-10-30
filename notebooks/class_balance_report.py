@@ -164,15 +164,16 @@ def plot_tamper_distribution(
     if not tamper_pixels:
         return None
 
-    # Sort bucket labels numerically ("05%", "10%", ...)
-    def _bucket_key(label: str) -> int:
-        try:
-            return int(label.rstrip("%"))
-        except ValueError:
-            return 0
+    filtered_items = {
+        bucket: count
+        for bucket, count in tamper_pixels.items()
+        if _bucket_to_percent(bucket) > 0
+    }
+    if not filtered_items:
+        return None
 
-    buckets = sorted(tamper_pixels.keys(), key=_bucket_key)
-    values = np.array([tamper_pixels[bucket] for bucket in buckets], dtype=float)
+    buckets = sorted(filtered_items.keys(), key=_bucket_to_percent)
+    values = np.array([filtered_items[bucket] for bucket in buckets], dtype=float)
     total = values.sum()
 
     # Guard against division by zero if counters are somehow empty.
@@ -205,6 +206,146 @@ def plot_tamper_distribution(
     return plot_path
 
 
+def _bucket_to_percent(label: str) -> int:
+    try:
+        return int(label.rstrip("%"))
+    except ValueError:
+        return 0
+
+
+def plot_tamper_interval_summary(
+    output_dir: Path,
+    split: str,
+    tamper_pixels: Counter,
+    interval: int = 10,
+) -> Path | None:
+    if not tamper_pixels:
+        return None
+
+    aggregated: Dict[str, int] = {}
+    for bucket, count in tamper_pixels.items():
+        pct = _bucket_to_percent(bucket)
+        if pct == 0:
+            continue
+        start = (pct // interval) * interval
+        end = min(start + interval - 1, 99)
+        display_start = max(start, 1)
+        key = f"{display_start:02d}-{end:02d}%"
+        aggregated[key] = aggregated.get(key, 0) + count
+
+    if not aggregated:
+        return None
+
+    ordered = sorted(
+        aggregated.items(),
+        key=lambda item: int(item[0].split("-")[0])
+    )
+    labels = [item[0] for item in ordered]
+    values = np.array([item[1] for item in ordered], dtype=float)
+    total = values.sum()
+    percentages = 100.0 * values / total if total else np.zeros_like(values)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bars = ax.bar(labels, values, color="#4c72b0")
+    ax.set_title(f"SID {split.title()} Tamper Coverage (Interval {interval}% bins)")
+    ax.set_ylabel("Sample Count")
+    ax.set_xlabel("Tamper Coverage Interval")
+
+    ax.set_ylim(0, values.max() * 1.5 if values.size else 1)
+
+    for bar, pct, count in zip(bars, percentages, values.astype(int)):
+        height = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            height,
+            f"{pct:.1f}%\n({count})",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    plt.xticks(rotation=45, ha="right")
+    fig.tight_layout()
+
+    plot_path = output_dir / f"tamper_interval_summary_{split}.png"
+    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
+    return plot_path
+
+
+def plot_tamper_interval_facets(
+    output_dir: Path,
+    split: str,
+    tamper_pixels: Counter,
+    interval: int = 10,
+) -> Path | None:
+    if not tamper_pixels:
+        return None
+
+    bucket_counts = {
+        pct: count
+        for bucket, count in tamper_pixels.items()
+        if (pct := _bucket_to_percent(bucket)) > 0
+    }
+    if not bucket_counts:
+        return None
+    max_pct = max(bucket_counts.keys())
+
+    intervals: List[Tuple[int, int]] = []
+    start = 0
+    while start <= max_pct:
+        end = min(start + interval - 1, 99)
+        intervals.append((start, end))
+        start += interval
+
+    # Keep only intervals that have any samples.
+    intervals = [
+        (start_pct, end_pct)
+        for (start_pct, end_pct) in intervals
+        if any(start_pct <= pct <= end_pct for pct in bucket_counts)
+    ]
+    if not intervals:
+        return None
+
+    n = len(intervals)
+    cols = min(5, n)
+    rows = int(np.ceil(n / cols))
+
+    fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 3.5 * rows), sharey=True)
+    axes = np.atleast_1d(axes).flatten()
+    global_max = max(bucket_counts.values())
+
+    for ax, (start_pct, end_pct) in zip(axes, intervals):
+        subset = {
+            pct: bucket_counts[pct]
+            for pct in sorted(bucket_counts)
+            if start_pct <= pct <= end_pct
+        }
+
+        if subset:
+            labels = [f"{pct:02d}%" for pct in subset.keys()]
+            values = list(subset.values())
+            ax.bar(labels, values, color="#dd8452")
+            display_start = max(start_pct, 1)
+            ax.set_title(f"{display_start:02d}-{end_pct:02d}%")
+            ax.tick_params(axis="x", labelrotation=45)
+            ax.set_ylim(0, global_max * 1.2)
+        else:
+            ax.set_visible(False)
+
+    # Hide any remaining empty axes.
+    for ax in axes[len(intervals):]:
+        ax.set_visible(False)
+
+    fig.suptitle(f"SID {split.title()} Tamper Coverage Zoomed by {interval}% Interval", fontsize=14)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+    plot_path = output_dir / f"tamper_interval_facets_{split}.png"
+    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
+    return plot_path
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -227,11 +368,17 @@ def main() -> None:
     summary_path = write_summary_json(output_dir, args.split, class_counts, tamper_pixels)
     plot_path = plot_class_balance(output_dir, args.split, class_counts)
     tamper_plot_path = plot_tamper_distribution(output_dir, args.split, tamper_pixels)
+    interval_summary_path = plot_tamper_interval_summary(output_dir, args.split, tamper_pixels)
+    interval_facets_path = plot_tamper_interval_facets(output_dir, args.split, tamper_pixels)
 
     print(f"Wrote JSON summary to {summary_path}")
     print(f"Wrote class balance plot to {plot_path}")
     if tamper_plot_path is not None:
         print(f"Wrote tamper distribution plot to {tamper_plot_path}")
+    if interval_summary_path is not None:
+        print(f"Wrote tamper interval summary plot to {interval_summary_path}")
+    if interval_facets_path is not None:
+        print(f"Wrote tamper interval facet plot to {interval_facets_path}")
 
 
 if __name__ == "__main__":
