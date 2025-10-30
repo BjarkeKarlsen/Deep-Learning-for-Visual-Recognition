@@ -36,18 +36,18 @@
 <!-- Stem -->
 <g id="node3" class="node">
 <title>Stem</title>
-<polygon fill="#f9fcff" stroke="none" points="296.5,-1049.5 296.5,-1141.5 414.75,-1141.5 414.75,-1049.5 296.5,-1049.5"/>
+<polygon fill="#f9fcff" stroke="none" points="293.12,-1049.5 293.12,-1141.5 418.12,-1141.5 418.12,-1049.5 293.12,-1049.5"/>
 <text text-anchor="start" x="339.5" y="-1125.05" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Stem</text>
 <text text-anchor="start" x="309.5" y="-1098.55" font-family="Helvetica,sans-Serif" font-size="11.00">Conv7×7 stride2</text>
 <text text-anchor="start" x="303.5" y="-1085.05" font-family="Helvetica,sans-Serif" font-size="11.00">BN, ReLU, MaxPool</text>
-<text text-anchor="start" x="306.88" y="-1059.55" font-family="Helvetica,sans-Serif" font-size="11.00">B × 64 × 64 × 64</text>
-<polygon fill="none" stroke="black" points="296.5,-1049.5 296.5,-1141.5 414.75,-1141.5 414.75,-1049.5 296.5,-1049.5"/>
+<text text-anchor="start" x="300.12" y="-1059.55" font-family="Helvetica,sans-Serif" font-size="11.00">B × 64 × 128 × 128</text>
+<polygon fill="none" stroke="black" points="293.12,-1049.5 293.12,-1141.5 418.12,-1141.5 418.12,-1049.5 293.12,-1049.5"/>
 </g>
 <!-- Input&#45;&gt;Stem -->
 <g id="edge1" class="edge">
 <title>Input&#45;&gt;Stem</title>
-<path fill="none" stroke="#cc4d4d" stroke-width="2" d="M147.08,-1180.53C186.19,-1164.51 236,-1144.1 277.02,-1127.29"/>
-<polygon fill="#cc4d4d" stroke="#cc4d4d" stroke-width="2" points="278.17,-1130.61 286.09,-1123.58 275.51,-1124.13 278.17,-1130.61"/>
+<path fill="none" stroke="#cc4d4d" stroke-width="2" d="M147.08,-1180.53C185.1,-1164.95 233.24,-1145.23 273.58,-1128.7"/>
+<polygon fill="#cc4d4d" stroke="#cc4d4d" stroke-width="2" points="274.83,-1131.98 282.75,-1124.95 272.17,-1125.5 274.83,-1131.98"/>
 </g>
 <!-- Dec1 -->
 <g id="node13" class="node">
@@ -79,8 +79,8 @@
 <!-- Stem&#45;&gt;Layer1 -->
 <g id="edge2" class="edge">
 <title>Stem&#45;&gt;Layer1</title>
-<path fill="none" stroke="#cc4d4d" stroke-width="2" d="M422.71,-1095.3C477.24,-1095.14 554.62,-1094.9 611.59,-1094.73"/>
-<polygon fill="#cc4d4d" stroke="#cc4d4d" stroke-width="2" points="611.49,-1098.23 621.48,-1094.7 611.47,-1091.23 611.49,-1098.23"/>
+<path fill="none" stroke="#cc4d4d" stroke-width="2" d="M425.91,-1095.29C480.35,-1095.13 556.05,-1094.9 611.95,-1094.73"/>
+<polygon fill="#cc4d4d" stroke="#cc4d4d" stroke-width="2" points="611.61,-1098.23 621.6,-1094.7 611.59,-1091.23 611.61,-1098.23"/>
 </g>
 <!-- Dec2 -->
 <g id="node12" class="node">

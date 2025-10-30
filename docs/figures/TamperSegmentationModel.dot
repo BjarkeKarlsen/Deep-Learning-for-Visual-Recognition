@@ -25,7 +25,7 @@ digraph TamperSegmentationModel {
     <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
       <tr><td><b>Stem</b></td></tr>
       <tr><td>Conv7×7 stride2<br/>BN, ReLU, MaxPool</td></tr>
-      <tr><td>B × 64 × 64 × 64</td></tr>
+      <tr><td>B × 64 × 128 × 128</td></tr>
     </table>
   >];
 
