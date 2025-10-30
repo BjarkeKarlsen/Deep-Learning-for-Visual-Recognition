@@ -57,7 +57,7 @@ model:
     trainable_layers: 2
 
 training:
-  epochs: 10
+  epochs: 2
   learning_rate: 0.0009217302894531698
   seed: 42
   checkpoint_frequency: 5
