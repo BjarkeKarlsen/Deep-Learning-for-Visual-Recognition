@@ -1,29 +1,29 @@
 data:
   dataset_name: saberzl/SID_Set
   image_size: 256
-  train_samples: 2000
-  val_samples: 400
-  test_samples: 400
+  train_samples: 100000
+  val_samples: 5000
+  test_samples: 5000
   use_streaming: false
   use_disk_cache: true
   augment:
     enable: true
     random_resized_crop: true
-    scale_min: 0.6
-    scale_max: 1.0
-    horizontal_flip_prob: 0.5
-    color_jitter_brightness: 0.1
-    color_jitter_contrast: 0.1
-    color_jitter_saturation: 0.05
-    color_jitter_hue: 0.02
-    gaussian_blur_prob: 0.1
-    gaussian_blur_sigma_min: 0.1
-    gaussian_blur_sigma_max: 1.0
-    random_erasing_prob: 0.05
-    random_erasing_scale_min: 0.01
-    random_erasing_scale_max: 0.1
-    random_erasing_ratio_min: 0.3
-    random_erasing_ratio_max: 3.3
+    scale_min: 0.7947570967602282
+    scale_max: 1.0826873780012149
+    horizontal_flip_prob: 0.21143062377254143
+    color_jitter_brightness: 0.10054206488632685
+    color_jitter_contrast: 0.17180673211849204
+    color_jitter_saturation: 0.10191474353714143
+    color_jitter_hue: 0.012401324208519249
+    gaussian_blur_prob: 0.03777119652037938
+    gaussian_blur_sigma_min: 0.06902827684376737
+    gaussian_blur_sigma_max: 1.1236000900094767
+    random_erasing_prob: 0.14714225667967676
+    random_erasing_scale_min: 0.022401501033549872
+    random_erasing_scale_max: 0.18792962390595624
+    random_erasing_ratio_min: 0.15042493776473248
+    random_erasing_ratio_max: 3.9230473790769604
     preview_samples: 12
     preview_seed: 1234
 
@@ -58,16 +58,16 @@ model:
 
 training:
   epochs: 10
-  learning_rate: 0.0005
+  learning_rate: 0.0009217302894531698
   seed: 42
   checkpoint_frequency: 5
   keep_checkpoints: 3
   label_smoothing: 0.0
-  grad_clip_norm: 1.0
+  grad_clip_norm: 1.9419503581139448
   ema_decay: 0.0
   optimizer:
     name: adamw
-    weight_decay: 0.01
+    weight_decay: 0.0010422743803438356
     betas:
       - 0.9
       - 0.95
@@ -76,13 +76,13 @@ training:
   scheduler:
     name: onecycle
     t_max: 0
-    max_lr: 0.0015
-    pct_start: 0.3
-    div_factor: 25.0
+    max_lr: 0.004170024241669842
+    pct_start: 0.28438571928373746
+    div_factor: 15.23500941368672
     final_div_factor: 10000.0
   loss:
-    bce_weight: 0.3
-    dice_weight: 0.7
+    bce_weight: 0.6016331529088306
+    dice_weight: 0.39836684709116946
 
 evaluation:
   report_background: true
