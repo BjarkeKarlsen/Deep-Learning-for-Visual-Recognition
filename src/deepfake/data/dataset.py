@@ -49,6 +49,7 @@ class SIDClassificationDataset(Dataset):
         self.return_label = return_label
 
         # DEFAULT IMAGE TRANSFORMS NORMALISE AND RESIZE SAMPLES.
+        # THIS PATH IS USED WHEN CALLERS DO NOT SUPPLY A CUSTOM TRANSFORM PIPELINE.
         if transform is None:
             self.transform = Compose([
                 self.to_rgb,
@@ -62,6 +63,7 @@ class SIDClassificationDataset(Dataset):
 
         if transform_mask is None:
             # DEFAULT MASK TRANSFORMS KEEP BINARY MASKS ALIGNED WITH IMAGES.
+            # USE NEAREST-NEIGHBOUR RESIZE SO MASK EDGES STAY CRISP AFTER RESCALING.
             self.transform_mask = Compose([
                 Resize(
                     (self.image_size, self.image_size),
@@ -75,6 +77,7 @@ class SIDClassificationDataset(Dataset):
             self.transform_mask = transform_mask
         
     def __len__(self):
+        # RETURN THE NUMBER OF EXAMPLES AVAILABLE TO THE DATALOADER.
         return len(self.dataset)
     
     def __getitem__(self, idx) -> dict:
@@ -92,6 +95,7 @@ class SIDClassificationDataset(Dataset):
                 raise ValueError("Joint transform requires mask but sample has none")
             raw_image, raw_mask = self.joint_transform(raw_image, raw_mask)
 
+        # APPLY IMAGE TRANSFORMS (AND NORMALISATION) SO DATA MATCHES MODEL EXPECTATIONS.
         image = self.transform(raw_image) if self.transform else raw_image
         assert image.ndim == 3 and image.shape[1:] == (self.image_size, self.image_size), (
             f"Image has wrong shape: {image.shape}"
@@ -121,4 +125,5 @@ class SIDClassificationDataset(Dataset):
                 raise ValueError("Expected label but sample has none")
             outputs.update({"label": torch.tensor(label, dtype=torch.long)})
 
+        # RETURN A DICTIONARY CONTAINING ONLY THE FIELDS REQUESTED BY THE CALLER.
         return outputs

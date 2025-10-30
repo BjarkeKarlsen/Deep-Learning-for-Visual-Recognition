@@ -31,10 +31,10 @@ except ImportError:  # pragma: no cover - optional dependency
 
 class Trainer:
     """
-    Class-based trainer for tamper segmentation with mixed precision,
-    metrics tracking, checkpointing, and plotting.
+    CLASS-BASED TRAINER FOR TAMPER SEGMENTATION WITH MIXED PRECISION,
+    METRICS TRACKING, CHECKPOINTING, AND PLOTTING.
     """
-    # COORDINATES SEGMENTATION TRAINING, LOGGING, AND CHECKPOINTING.
+    # ORGANISES DATA, MODEL, LOSSES, LOGGING, AND CHECKPOINTS ACROSS THE SEGMENTATION WORKFLOW.
 
     def __init__(
         self,
@@ -45,11 +45,11 @@ class Trainer:
         persister: IModelPersister = None
     ):
         self.cfg = cfg
-        # KEEP REFERENCES TO LOGGING, METRICS, AND CHECKPOINT HELPERS.
+        # STORE REFERENCES TO LOGGER, METRICS TRACKER, AND CHECKPOINT MANAGER FOR LATER USE.
         self.logger = logger
         self.device = torch.device(cfg.training.device)
 
-        # MODEL, LOSS, OPTIMISER, AND AMP HELPERS FOR SEGMENTATION.
+        # INITIALISE THE SEGMENTATION MODEL PLUS OPTIMISER, LOSSES, AND MIXED PRECISION HELPERS.
         self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self._log_model_summary()
         self._save_model_visualizations()
@@ -67,7 +67,7 @@ class Trainer:
         self.scheduler = None
         self.scheduler_step_mode = "epoch"
 
-        # Persister, metrics, checkpoint
+        # SAVE HANDLES TO PERSISTENCE AND TRACKING UTILITIES SO RUNS CAN RESUME CLEANLY.
         self.persister = persister or TorchModelPersister()
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
@@ -100,7 +100,7 @@ class Trainer:
         prev_best = None
         prev_best_val = float('-inf')
         
-        # PREPARE LOADER PAIRS FILTERED TO TAMPERED SAMPLES WITH MASKS.
+        # PREPARE TRAIN AND VALIDATION LOADERS LIMITED TO TAMPERED SAMPLES THAT INCLUDE MASKS.
         train_loader, val_loader = self._load_data()
         self._log_forward_shape_snapshot(train_loader)
 
@@ -108,7 +108,7 @@ class Trainer:
             steps_per_epoch = len(train_loader)
         except (TypeError, AttributeError):
             steps_per_epoch = 0
-        # Instantiate LR scheduler (cosine/onecycle) if requested
+        # BUILD THE LR SCHEDULER ONLY AFTER WE KNOW HOW MANY BATCHES ARE IN AN EPOCH.
         self.scheduler, self.scheduler_step_mode = SchedulerFactory.create(
             self.optimizer,
             self.cfg.training,
@@ -117,11 +117,11 @@ class Trainer:
         if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
             self.scheduler.last_epoch = start_epoch - 1
 
-        # START TRACKING TO CAPTURE TIMESTAMPS AND INITIAL HISTORY.
+        # START METRIC TRACKING SO WE CAPTURE TIMESTAMPS AND HISTORY FROM THE FIRST EPOCH.
         self.metrics_tracker.start_training()
         base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
-        # MAIN LOOP HANDLES TRAINING STEPS, VALIDATION, AND CHECKPOINTS.
+        # MAIN LOOP: TRAIN AN EPOCH, VALIDATE IT, LOG RESULTS, AND HANDLE CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
             (
                 avg_train_loss,
@@ -141,7 +141,7 @@ class Trainer:
                 avg_val_dice_raw,
             ) = self._evaluation(val_loader)
             
-            # Determine previous best before recording current metrics
+            # CHECK THE PREVIOUS BEST VALIDATION DICE SO WE KNOW IF THIS EPOCH IMPROVES IT.
             prev_best = self.metrics_tracker.get_best_metric("val_dice")
             prev_best_val = prev_best.additional_metrics.get("val_dice") if prev_best and prev_best.additional_metrics.get("val_dice") is not None else float('-inf')
 
@@ -155,7 +155,7 @@ class Trainer:
             }
             current_lr = param_group_lrs.get("lr_group_0", max(float(self.optimizer.param_groups[0]["lr"]), 1e-12))
 
-            # RECORD METRICS
+            # RECORD THE FULL SET OF TRAINING AND VALIDATION METRICS FOR THIS EPOCH.
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
                 step=base_step,
@@ -177,7 +177,7 @@ class Trainer:
                 }
             ))
             
-            # LOGGING EPOCH
+            # LOG A FRIENDLY SUMMARY SO USERS CAN FOLLOW PROGRESS.
             self.logger.info(
                 f"Epoch {epoch+1}: "
                 f"train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}, "
@@ -186,13 +186,13 @@ class Trainer:
                 f"val_bce_w={avg_val_bce_weighted:.4f}, val_dice_w={avg_val_dice_weighted:.4f}"
             )
             
-            # SAVE BEST MODEL IF IMPROVED
+            # SAVE THE MODEL WHEN IT ACHIEVES A BETTER VALIDATION DICE THAN ANY PRIOR EPOCH.
             if avg_val_dice > prev_best_val:
                 self.persister.save_model(self.model, self.cfg.paths.model_path)
                 self.logger.info(f"Saved best model at epoch {epoch+1} (dice={avg_val_dice:.4f})")
 
 
-            # CHECKPOINT
+            # CREATE SCHEDULED CHECKPOINTS SO TRAINING CAN RECOVER AFTER INTERRUPTIONS.
             checkpoint_dir = self.checkpoint_mgr.create_checkpoint(
                 epoch=epoch + 1,
                 model=self.model,
@@ -201,7 +201,7 @@ class Trainer:
                 config=self.cfg,
             )
 
-        # WRAP UP BY PERSISTING THE COLLECTED TRAINING HISTORY.
+        # AFTER TRAINING FINISHES, FINALISE AND SAVE METRICS FOR LATER ANALYSIS.
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
 
@@ -221,31 +221,31 @@ class Trainer:
             best_epoch=best_epoch,
         )
         
-        # OUTPUT TRAINING CURVES FOR QUICK REVIEW OF PROGRESS.
+        # RENDER TRAINING AND LR PLOTS SO USERS CAN REVIEW PROGRESS QUICKLY.
         plotter = SegmentationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
         plotter.plot_training_history()
         plotter.plot_learning_rate_schedule()
 
             
     def _train_epoch(self, train_loader: DataLoader, epoch: int):
-        """Run one training pass over the segmentation dataloader."""
+        """RUN ONE FULL TRAINING EPOCH OVER THE SEGMENTATION DATA LOADER."""
         self.model.train()
         loss_sum, dice_sum, steps = 0.0, 0.0, 0
         bce_weighted_sum, dice_weighted_sum = 0.0, 0.0
         bce_raw_sum, dice_raw_sum = 0.0, 0.0
         total_elements = 0
         
-        # ITERATE OVER BATCHES WITH A PROGRESS BAR
+        # LOOP OVER BATCHES WITH A PROGRESS BAR FOR USER FEEDBACK.
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}")
         for batch in pbar:
             # FETCH IMAGE AND MASK TENSORS FOR THIS MINI-BATCH.
             images = batch["image"].to(self.device)
             masks = batch["mask"].to(self.device)
             
-            # ZERO GRADIENTS BEFORE BACKWARD PASS
+            # RESET OPTIMISER GRADIENTS BEFORE BACKPROPAGATION.
             self.optimizer.zero_grad()
             
-            # ENABLE MIXED PRECISION FOR FASTER FORWARD AND REDUCED MEMORY
+            # ENABLE MIXED PRECISION TO SPEED UP TRAINING AND REDUCE MEMORY FOOTPRINT.
             with autocast(device_type=self.device.type, enabled=self.amp_enabled):
                 logits = self.model(images)
                 bce_raw = self.bce_loss(logits, masks)
@@ -254,7 +254,7 @@ class Trainer:
                 dice = self.dice_weight * dice_raw
                 loss = bce + dice
             
-            # SCALE LOSS AND BACKWARD FOR STABLE MIXED-PRECISION TRAINING    
+            # SCALE THE LOSS FOR MIXED PRECISION, BACKPROPAGATE, AND STEP THE OPTIMISER.
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
             clip_norm = getattr(self.cfg.training, "grad_clip_norm", 0.0)
@@ -265,7 +265,7 @@ class Trainer:
             if self.scheduler and self.scheduler_step_mode == "batch":
                 self.scheduler.step()
 
-            # UPDATE TRAINING METRICS
+            # ACCUMULATE PER-BATCH LOSS CONTRIBUTIONS AND DICE OVER THE WHOLE DATASET.
             batch_elements = masks.numel()
             loss_sum += loss.item() * batch_elements
             bce_weighted_sum += bce.item() * batch_elements
@@ -276,7 +276,7 @@ class Trainer:
             dice_sum += dice_coefficient(logits, masks).item()
 
             steps += 1
-            # UPDATE PROGRESS BAR WITH CURRENT LOSS
+            # SHOW CURRENT LOSS COMPONENTS ON THE PROGRESS BAR FOR QUICK MONITORING.
             avg_dice = dice_sum / max(steps, 1)
             pbar.set_postfix({
                 'loss': f'{loss.item():.3f}',
@@ -285,7 +285,7 @@ class Trainer:
                 'dice_w': f'{dice.item():.3f}',
             })
         
-        # CALCULATE AVERAGE METRICS    
+        # CALCULATE AVERAGE METRICS TO LOG AND SAVE FOR THIS EPOCH.
         avg_train_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_train_dice = dice_sum / max(steps, 1)
         avg_train_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
@@ -303,9 +303,9 @@ class Trainer:
             avg_train_dice_raw,
         )
 
-    @torch.no_grad() # Optimize memory usage and speed up computations
+    @torch.no_grad()  # DISABLE GRADIENTS DURING VALIDATION TO SAVE MEMORY AND TIME.
     def _evaluation(self, val_loader: DataLoader):
-        """Evaluate segmentation metrics without gradient tracking."""
+        """EVALUATE SEGMENTATION METRICS WITHOUT UPDATING MODEL WEIGHTS."""
         
         self.model.eval()
         loss_sum, dice_sum = 0.0, 0.0
@@ -316,7 +316,7 @@ class Trainer:
         
         with torch.no_grad():
             for batch in val_loader:
-                # RUN VALIDATION FORWARD PASS AND ACCUMULATE METRICS.
+                # RUN THE VALIDATION FORWARD PASS AND ACCUMULATE METRICS.
                 images = batch["image"].to(self.device)
                 masks = batch["mask"].to(self.device)
                 
@@ -339,7 +339,7 @@ class Trainer:
                 dice_sum += dice_coefficient(logits, masks).item()
                 steps += 1
         
-        # CALCULATE AVERAGE METRICS ACROSS ALL VALIDATION BATCHES        
+        # COMPUTE AVERAGE VALIDATION METRICS SO WE CAN COMPARE EPOCHS FAIRLY.
         avg_val_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_val_dice = dice_sum / max(steps, 1) if steps else float('nan')
         avg_val_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
@@ -436,7 +436,7 @@ class Trainer:
 
         was_training = self.model.training
         self.model.eval()
-        # Torchinfo summary
+        # TORCHINFO SUMMARY PROVIDES A TEXT OVERVIEW OF LAYERS, SHAPES, AND PARAM COUNTS.
         if torchinfo_summary is not None:
             try:
                 input_size = (1, 3, self.cfg.data.image_size, self.cfg.data.image_size)
@@ -464,7 +464,7 @@ class Trainer:
         if dataset is None:
             self.logger.warning("Shape snapshot skipped: loader has no dataset attribute")
             return
-        # Iterable datasets cannot be indexed; skip to avoid side effects with worker teardown.
+        # SKIP ITERABLE DATASETS BECAUSE THEY CANNOT BE SAFELY INDEXED FOR A SAMPLE.
         from torch.utils.data import IterableDataset  # local import to keep optional dependency light
 
         if isinstance(dataset, IterableDataset):
@@ -594,7 +594,7 @@ class Trainer:
         return train_loader, val_loader
 
     def _save_augmentation_preview(self, dataset, joint_transform, image_transform, mask_transform):
-        """Optionally save a grid of augmented image-mask pairs for quick sanity checks."""
+        """OPTIONALLY SAVE A GRID OF AUGMENTED IMAGE-MASK PAIRS FOR QUICK SANITY CHECKS."""
         augment_cfg = getattr(self.cfg.data, "augment", None)
         if not augment_cfg or not getattr(augment_cfg, "enable", False):
             return
@@ -658,7 +658,7 @@ class Trainer:
 
     @staticmethod
     def _apply_mask_overlay(image_tensor: torch.Tensor, mask_tensor: torch.Tensor, color=(1.0, 0.0, 0.0), alpha: float = 0.4):
-        """Blend a colored mask onto the denormalised image for visual inspection."""
+        """BLEND A COLOURED MASK ONTO THE DENORMALISED IMAGE SO TAMPER REGIONS ARE EASY TO SEE."""
         color_tensor = torch.tensor(color, device=image_tensor.device, dtype=image_tensor.dtype).view(3, 1, 1)
         alpha_tensor = alpha * mask_tensor
         overlay = (1 - alpha_tensor) * image_tensor + alpha_tensor * color_tensor

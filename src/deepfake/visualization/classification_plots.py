@@ -52,7 +52,7 @@ class ClassificationPlots(CommonPlots):
         additional = curves.get('_metadata', {}).get('additional_metric_names', [])
         num_plots = 2 + (min(len(additional), 4) if include_additional_metrics else 0)
 
-        # Create subplots
+        # CREATE SUBPLOTS BASED ON HOW MANY PANELS ARE NEEDED.
         if num_plots <= 2:
             fig, axes = plt.subplots(1, num_plots, figsize=(7 * num_plots, 6))
             axes = [axes] if num_plots == 1 else list(axes)
@@ -64,7 +64,7 @@ class ClassificationPlots(CommonPlots):
         epochs = range(1, len(curves['train_loss']) + 1)
         idx = 0
 
-        # Loss plot
+        # LOSS PLOT SHOWS HOW TRAIN AND VALIDATION LOSSES EVOLVE PER EPOCH.
         axes[idx].plot(epochs, curves['train_loss'], 'b-o', label='Train Loss')
         if curves.get('val_loss'):
             axes[idx].plot(epochs, curves['val_loss'], 'r-s', label='Val Loss')
@@ -75,7 +75,7 @@ class ClassificationPlots(CommonPlots):
         axes[idx].grid(False)
         idx += 1
 
-        # Accuracy plot
+        # ACCURACY PLOT TRACKS TRAIN AND VALIDATION ACCURACY OVER TIME.
         if curves.get('train_acc') and curves.get('val_acc'):
             tacc = curves['train_acc']
             if tacc and max(tacc) > 2.0:
@@ -95,7 +95,7 @@ class ClassificationPlots(CommonPlots):
             axes[idx].grid(False)
             idx += 1
 
-        # Additional metrics
+        # ADDITIONAL METRICS HIGHLIGHT UP TO FOUR EXTRA CURVES (E.G., LR OR F1 SCORES).
         colors = ['orange', 'purple', 'brown', 'pink']
         for i, name in enumerate(additional[:4]):
             if idx >= len(axes):
@@ -114,7 +114,7 @@ class ClassificationPlots(CommonPlots):
             ax.grid(False)
             idx += 1
 
-        # Hide unused subplots
+        # HIDE UNUSED PANELS SO THE FIGURE DOES NOT DISPLAY BLANK AXES.
         for j in range(idx, len(axes)):
             axes[j].set_visible(False)
 

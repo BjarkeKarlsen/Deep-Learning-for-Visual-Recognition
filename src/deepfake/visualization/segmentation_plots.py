@@ -167,7 +167,7 @@ class SegmentationPlots(CommonPlots):
                     )
                     legend_added = True
 
-        # Hide any unused axes
+        # HIDE ANY UNUSED AXES SO EMPTY PANELS DO NOT SHOW UP.
         total_examples = nrows * ncols
         for unused_idx in range(n, total_examples):
             row = unused_idx // ncols
@@ -177,7 +177,7 @@ class SegmentationPlots(CommonPlots):
 
         plt.tight_layout()
         
-        # Use the base class save_plot method
+        # USE THE BASE CLASS SAVE_PLOT METHOD TO HANDLE FILE OUTPUT.
         self.save_plot(fig, filename=filename or "segmentation_gallery.png", save_path=save_path)
 
     def plot_training_history(self, filename: Optional[str] = None, save_path: Optional[str] = None) -> None:
@@ -188,7 +188,7 @@ class SegmentationPlots(CommonPlots):
             
         curves = self.history
 
-        # Number of epochs based on train_loss length
+        # NUMBER OF EPOCHS IS DETERMINED BY THE LENGTH OF THE TRAIN LOSS SERIES.
         n_epochs = len(curves.get('train_loss', []))
         if n_epochs == 0:
             print("No training loss data found in history.")
@@ -196,7 +196,7 @@ class SegmentationPlots(CommonPlots):
             
         epochs = range(1, n_epochs + 1)
 
-        # Handle dice metrics if available
+        # HANDLE DICE METRICS IF AVAILABLE SO WE CAN PLOT THEM ALONGSIDE LOSSES.
         raw_train_dice = curves.get('train_dice', [])
         raw_val_dice = curves.get('val_dice', [])
         
@@ -209,10 +209,11 @@ class SegmentationPlots(CommonPlots):
                 data = data[:length]
             return data
 
-        # Pad dice arrays to match epochs length
+        # PAD DICE ARRAYS TO MATCH EPOCH COUNT SO CURVES ALIGN.
         train_dice = pad_curve(raw_train_dice, n_epochs)
         val_dice = pad_curve(raw_val_dice, n_epochs)
 
+        # DETERMINE WHETHER TO SHOW EXTRA PANELS FOR BCE/DICE COMPONENT BREAKDOWNS.
         extra_head_losses = any(
             key in curves
             for key in (
@@ -235,7 +236,7 @@ class SegmentationPlots(CommonPlots):
         else:
             ax1, ax2, ax3 = axes
 
-        # Loss plot
+        # LOSS PLOT SHOWS HOW TRAINING AND VALIDATION LOSSES CHANGE OVER TIME.
         train_loss = np.asarray(curves.get('train_loss', []), dtype=float)
         val_loss_raw = pad_curve(curves.get('val_loss', []), n_epochs) if curves.get('val_loss') else []
         val_loss = np.asarray(val_loss_raw, dtype=float) if val_loss_raw else np.full_like(train_loss, np.nan)

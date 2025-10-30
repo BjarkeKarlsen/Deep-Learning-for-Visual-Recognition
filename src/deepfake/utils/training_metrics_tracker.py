@@ -29,7 +29,7 @@ class TrainingMetrics:
 
     def __post_init__(self):
         """Validate inputs and set default timestamp."""
-        # Input validation
+        # INPUT VALIDATION ENSURES METRICS STAY WITHIN EXPECTED RANGES.
         if self.epoch < 0:
             raise ValueError("Epoch must be non-negative")
         if self.step < 0:
@@ -45,7 +45,7 @@ class TrainingMetrics:
         if self.learning_rate is not None and self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
 
-        # Set timestamp if not provided
+        # SET TIMESTAMP IF NOT PROVIDED SO METRIC HISTORY IS TIME-STAMPED.
         if self.timestamp is None:
             self.timestamp = datetime.now().isoformat()
 
@@ -105,15 +105,15 @@ class TrainingMetricsTracker(IMetricsTracker):
         self.auto_backup = auto_backup
         self.max_metrics_in_memory = max_metrics_in_memory
 
-        #  NEW: Backup configuration
+        # NEW: BACKUP CONFIGURATION TRACKS HOW OFTEN AND HOW MANY BACKUPS TO KEEP.
         self.backup_frequency = backup_frequency
         self.keep_backups = keep_backups
         self._backup_base_path: Optional[Path] = None
 
-        # Thread safety
+        # THREAD SAFETY: USE A REENTRANT LOCK BECAUSE TRACKER MAY BE CALLED FROM DIFFERENT THREADS.
         self._lock = threading.RLock()
 
-        # Configuration
+        # CONFIGURATION DICT MIRRORS WHAT FIELDS ARE BEING TRACKED AND HOW OFTEN TO BACKUP.
         self.config = {
             'track_train_loss': True,
             'track_val_loss': True,
@@ -154,7 +154,7 @@ class TrainingMetricsTracker(IMetricsTracker):
     def configure_tracking(self, **kwargs) -> None:
         """Configure which metrics to track and backup settings."""
         with self._lock:
-            # Update backup settings if provided
+            # UPDATE BACKUP SETTINGS IF PROVIDED BY THE CALLER.
             if 'backup_frequency' in kwargs:
                 self.backup_frequency = kwargs['backup_frequency']
             if 'keep_backups' in kwargs:
@@ -193,7 +193,7 @@ class TrainingMetricsTracker(IMetricsTracker):
         """
         try:
             with self._lock:
-                # Memory management
+                # MEMORY MANAGEMENT: WARN IF THE IN-MEMORY HISTORY GROWS BEYOND THE SAFETY LIMIT.
                 if len(self.metrics) >= self.max_metrics_in_memory:
                     self.logger.warning(
                         f"Reached maximum metrics in memory ({self.max_metrics_in_memory}). "

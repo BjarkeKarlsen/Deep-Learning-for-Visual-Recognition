@@ -43,7 +43,7 @@ class Evaluator:
         self.bucket_labels = self._build_bucket_labels(self.bucket_bounds)
 
         # DATASET & DATALOADER
-        # BUILD TEST SPLIT WITH TAMPERED MASKS AND MATCHED TRANSFORMS.
+        # BUILD A TEST SPLIT THAT INCLUDES TAMPERED MASKS AND APPLIES THE SAME TRANSFORMS USED DURING TRAINING.
         manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -107,14 +107,14 @@ class Evaluator:
             )
 
         # METRICS TRACKER
-        # CAPTURES DICE/IOU HISTORY FOR SAVING AND PLOTTING.
+        # CAPTURE DICE/IOU RESULTS SO THEY CAN BE SAVED, PLOTTED, AND COMPARED ACROSS RUNS.
         self.metrics_tracker = EvaluationMetricsTracker(
             SegmentationEvaluationMetrics,
             logger=logger,
         )
 
         # MODEL
-        # RESTORE BEST CHECKPOINTED WEIGHTS BEFORE INFERENCE.
+        # RESTORE THE BEST CHECKPOINTED WEIGHTS BEFORE RUNNING INFERENCE.
         self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self.persister = persister or TorchModelPersister()
         self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
@@ -123,7 +123,7 @@ class Evaluator:
     def run(self):
         """Full evaluation pipeline."""
         self.logger.log_evaluation_config(asdict(self.cfg))
-        # PIPELINE: INFER ON TEST SET, SUMMARISE SCORES, THEN PRODUCE PLOTS.
+        # PIPELINE: RUN INFERENCE, SUMMARISE SCORES, OPTIONALLY EVALUATE BACKGROUND, THEN PLOT RESULTS.
         dice_scores, iou_scores, best_examples, worst_examples = self.infer()
         background_stats = None
         if self.background_loader is not None:
@@ -162,7 +162,7 @@ class Evaluator:
                 logits = self.model(images)
                 probs = torch.sigmoid(logits)
 
-                # Threshold sweep stats
+                # THRESHOLD SWEEP: TRACK TRUE/POSITIVE/FALSE COUNTS FOR DIFFERENT PROBABILITY CUT-OFFS.
                 for threshold in self.thresholds:
                     preds = (probs > threshold).float()
                     tp = (preds * masks).sum().item()
@@ -195,7 +195,7 @@ class Evaluator:
                     bucket_entry["iou"].append(float(iou_val))
                     bucket_entry["count"] += 1
 
-                    # Prepare data for qualitative review
+                    # PREPARE DATA FOR QUALITATIVE REVIEW BY STORING IMAGE, TRUE MASK, AND PREDICTED MASK.
                     denorm = (images[idx] * std_tensor + mean_tensor).clamp(0, 1).cpu().permute(1, 2, 0).numpy()
                     true_np = true_mask.squeeze(0).cpu().numpy()
                     pred_np = pred_mask.squeeze(0).cpu().numpy()
@@ -320,7 +320,7 @@ class Evaluator:
             "background_hist_max": max_hist.astype(int).tolist(),
         }
 
-    # Helper utilities
+    # HELPER UTILITIES
     def _build_bucket_labels(self, bounds: List[float]) -> List[str]:
         labels = []
         for idx in range(len(bounds) - 1):

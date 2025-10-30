@@ -200,10 +200,10 @@ class EvaluationMetricsTracker(IEvaluationTracker, Generic[T]):
     def save_to_json(self, path: Union[str, Path]) -> None:
         """Save metrics history to JSON file"""
         with self.lock:
-            # Convert Path to string if needed
+            # CONVERT PATH TO STRING IF NEEDED FOR JSON SERIALISATION.
             path = str(path)
             
-            # Create the data structure
+            # CREATE THE DATA STRUCTURE THAT WILL BE WRITTEN TO DISK.
             data = {
                 "task_type": self.metric_type.__name__,
                 "total_evaluations": len(self.metrics_history),
@@ -211,7 +211,7 @@ class EvaluationMetricsTracker(IEvaluationTracker, Generic[T]):
                 "metrics_history": [asdict(metrics) for metrics in self.metrics_history]
             }
             
-            # Add summary statistics
+            # ADD SUMMARY STATISTICS FOR QUICK HUMAN INSPECTION.
             if self.metrics_history:
                 latest = self.metrics_history[-1]
                 best = self.get_best_metric()
@@ -221,7 +221,7 @@ class EvaluationMetricsTracker(IEvaluationTracker, Generic[T]):
                     "best_primary_score": best.get_comparable_score() if best else None
                 }
             
-            # Write to file
+            # WRITE THE JSON PAYLOAD TO DISK.
             try:
                 with open(path, 'w') as f:
                     json.dump(data, f, indent=4, default=str)

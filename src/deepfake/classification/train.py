@@ -30,7 +30,7 @@ from .model import BaselineClassifier
 
 
 class Trainer:
-    # MANAGES CLASSIFICATION TRAINING, CHECKPOINTS, AND LOGGING FOR ONE RUN.
+    # ORCHESTRATES THE ENTIRE CLASSIFICATION TRAINING LOOP, INCLUDING DATA, OPTIMISERS, LOGGING, AND CHECKPOINTS.
     def __init__(
         self,
         cfg: Config,
@@ -41,14 +41,14 @@ class Trainer:
     ):
         self.cfg = cfg
         self.device = torch.device(cfg.training.device)
-        # SHARED UTILITIES TRACK LOGS, METRIC HISTORY, AND CHECKPOINT SNAPSHOTS.
+        # SHARED UTILITIES TRACK LOGS, METRICS, AND CHECKPOINTS SO RUNS CAN BE RESTARTED SAFELY.
         self.logger = logger
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
         self.persister = persister or TorchModelPersister()
         
         
-        # CORE OPTIMISATION COMPONENTS FOR THE CLASSIFIER.
+        # CORE TRAINING OBJECTS: MODEL, OPTIMISER, LOSS, MIXED PRECISION, SCHEDULER, AND OPTIONAL EMA.
         self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=getattr(cfg.training, "label_smoothing", 0.0))
@@ -66,7 +66,7 @@ class Trainer:
             )
             self.ema_model.to(self.device)
 
-        # WARM-START FROM A PREVIOUSLY SAVED BEST MODEL WHEN AVAILABLE.
+        # IF A PREVIOUS BEST MODEL EXISTS, LOAD IT TO CONTINUE TRAINING INSTEAD OF STARTING FROM SCRATCH.
         if os.path.isfile(cfg.paths.model_path):
             self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
             self.logger.info(f"Loaded best model from {cfg.paths.model_path}")       
@@ -78,14 +78,14 @@ class Trainer:
         prev_best = None
         prev_best_val = float('-inf')
         
-        # MATERIALISE TRAIN AND VALIDATION LOADERS BASED ON THE CONFIG.
+        # BUILD TRAINING AND VALIDATION LOADERS USING THE CONFIGURED DATA SETTINGS.
         train_loader, val_loader = self._load_data(self.cfg)
 
         try:
             steps_per_epoch = len(train_loader)
         except (TypeError, AttributeError):
             steps_per_epoch = 0
-        # Build scheduler (if configured) now that we know steps/epoch
+        # SCHEDULER NEEDS THE NUMBER OF BATCHES PER EPOCH, SO BUILD IT AFTER DATA LOADERS ARE READY.
         self.scheduler, self.scheduler_step_mode = SchedulerFactory.create(
             self.optimizer,
             self.cfg.training,
@@ -94,11 +94,11 @@ class Trainer:
         if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
             self.scheduler.last_epoch = start_epoch - 1
 
-        # START METRIC TRACKING SO TIMINGS AND HISTORY ARE RECORDED.
+        # START METRIC TRACKING TO RECORD EACH EPOCH AND SUPPORT RESUME-ON-RESTART.
         self.metrics_tracker.start_training()
         base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
-        # MAIN EPOCH LOOP: TRAIN, EVALUATE, LOG, AND SAVE CHECKPOINTS.
+        # MAIN TRAINING LOOP: RUN ONE EPOCH, EVALUATE IT, LOG RESULTS, AND MANAGE CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
             train_acc, avg_train_loss, batch_count = self._train_epoch(train_loader, epoch)
             eval_model = self.ema_model.module if self.ema_model is not None else self.model
@@ -151,7 +151,7 @@ class Trainer:
             if checkpoint_dir and self.ema_model is not None:
                 torch.save(self.ema_model.state_dict(), checkpoint_dir / "ema_state.pth")
 
-        # FINALISE METRIC STORAGE AFTER THE LOOP COMPLETES.
+        # AFTER FINISHING ALL EPOCHS, WRITE METRICS TO DISK SO THE RUN CAN BE ANALYSED LATER.
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
 
@@ -168,7 +168,7 @@ class Trainer:
             best_epoch=best_epoch,
         )
 
-        # RENDER QUICKLOOK PLOTS FOR LOSS, ACCURACY, AND LR.
+        # AUTO-GENERATE TRAINING PLOTS SO USERS CAN INSPECT CURVES WITHOUT EXTRA STEPS.
         plotter = ClassificationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
         plotter.plot_training_history()
         plotter.plot_learning_rate_schedule()
@@ -182,10 +182,10 @@ class Trainer:
         train_total = 0
         batch_count = 0
 
-        # PROGRESS BAR SHOWS MINI-BATCH STATUS FOR THE CURRENT EPOCH.
+        # PROGRESS BAR PROVIDES FRIENDLY FEEDBACK DURING EACH EPOCH.
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}")
         for batch in pbar:
-            # FORWARD AND BACKWARD PASS FOR A SINGLE MINI-BATCH.
+            # PROCESS ONE MINI-BATCH: FORWARD PASS, LOSS, BACKWARD PASS, AND OPTIMISER STEP.
             images = batch["image"].to(self.device)
             labels = batch["label"].to(self.device)
             batch_count += 1
@@ -222,34 +222,34 @@ class Trainer:
 
         return train_acc, avg_train_loss, batch_count
     
-    @torch.no_grad() # Optimize memory usage and speed up computations
+    @torch.no_grad()  # DISABLE GRADIENTS DURING VALIDATION TO SAVE MEMORY AND SPEED UP EXECUTION.
     def _evaluation(self, val_loader: DataLoader, model: Optional[nn.Module] = None):
         """Evaluate model (EMA if provided) without gradient tracking."""
-        # RUN A FULL VALIDATION SWEEP TO MEASURE GENERALISATION.
+        # RUN A FULL VALIDATION SWEEP TO ESTIMATE HOW WELL THE MODEL GENERALISES.
         eval_model = model if model is not None else self.model
         eval_model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
 
         with torch.no_grad():
             for batch in val_loader:
-                # COLLECT VALIDATION LOSS AND ACCURACY FOR THIS MINI-BATCH.
+                # COMPUTE VALIDATION LOSS AND ACCURACY ON THIS BATCH.
                 images = batch["image"].to(self.device)
                 labels = batch["label"].to(self.device)
                 
-                # FORWARD PASS THROUGH CLASSIFICATION MODEL
+                # FORWARD PASS THROUGH THE CLASSIFIER.
                 outputs = eval_model(images)
                 loss = self.criterion(outputs, labels)
                 
-                # ACCUMULATE LOSS
+                # ACCUMULATE BATCH LOSS SO WE CAN REPORT AN AVERAGE.
                 batch_size = labels.size(0)
                 val_loss += loss.item() * batch_size
                 
-                # COUNT TOTAL SAMPLES AND CORRECT PREDICTIONS
+                # COUNT HOW MANY PREDICTIONS WERE CORRECT IN THIS BATCH.
                 _, predicted = torch.max(outputs, 1)
                 val_total += batch_size
                 val_correct += (predicted == labels).sum().item()
 
-        # CALCULATE ACCURACY AND AVERAGE LOSS WITH SAFE DIVISION
+        # RETURN ACCURACY AND LOSS, USING SAFE DIVISION TO AVOID ZERO-DIVISION ERRORS.
         val_acc = val_correct / val_total if val_total > 0 else None
         avg_val_loss = (val_loss / val_total if val_total > 0 else float('nan'))
 
@@ -258,7 +258,7 @@ class Trainer:
     
         
     def _save_augmentation_preview(self, dataset, transform):
-        """Optionally save a grid of augmented training samples."""
+        """OPTIONALLY SAVE A GRID OF AUGMENTED TRAINING SAMPLES FOR VISUAL INSPECTION."""
         augment_cfg = getattr(self.cfg.data, 'augment', None)
         if not augment_cfg or not getattr(augment_cfg, 'enable', False):
             return
@@ -267,7 +267,7 @@ class Trainer:
         if preview_samples <= 0:
             return
 
-        # RANDOMLY SAMPLE EXAMPLES TO VISUALISE AUGMENTED OUTPUTS.
+        # DRAW RANDOM EXAMPLES SO USERS CAN SEE HOW THE AUGMENTATIONS CHANGE IMAGES.
         try:
             dataset_length = len(dataset)
         except TypeError:
@@ -290,7 +290,7 @@ class Trainer:
                 self.logger.warning(f'Failed to fetch sample {idx} for augmentation preview: {exc}')
                 continue
 
-            # APPLY THE SAME AUGMENTATION PIPELINE USED DURING TRAINING.
+            # APPLY THE SAME AUGMENTATION PIPELINE USED DURING TRAINING FOR A TRUE PREVIEW.
             raw_image = SIDClassificationDataset.to_rgb(example['image'])
             augmented = transform(raw_image)
             augmented_images.append(augmented)
@@ -312,12 +312,12 @@ class Trainer:
         self.logger.info(f'Saved augmentation preview with {len(denorm)} samples to {preview_path}')
 
     def _model_for_export(self) -> nn.Module:
-        """Prefer the EMA weights when exporting/saving."""
-        # GIVE PRIORITY TO EMA WEIGHTS WHEN THEY ARE AVAILABLE.
+        """RETURN EMA WEIGHTS WHEN AVAILABLE SO SAVED MODELS ARE MORE STABLE."""
+        # EMA TYPICALLY IMPROVES EVALUATION PERFORMANCE, SO EXPORT IT WHEN PRESENT.
         return self.ema_model.module if self.ema_model is not None else self.model
 
     def load_ema_state(self, ema_path: Path) -> None:
-        """Restore EMA weights from disk if present."""
+        """RESTORE EMA WEIGHTS FROM DISK IF THEY WERE PREVIOUSLY SAVED."""
         if self.ema_model is None or not ema_path.exists():
             return
         state_dict = torch.load(ema_path, map_location=self.device)
@@ -325,7 +325,7 @@ class Trainer:
         self.ema_model.to(self.device)
 
     def _load_data(self, cfg: Config):
-        """Materialise train/val datasets and wrap them in DataLoaders."""
+        """BUILD TRAIN AND VALIDATION DATASETS AND WRAP THEM IN PYTORCH DATALOADERS."""
         self.manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -380,7 +380,7 @@ class Trainer:
                 max_samples=cfg.data.train_samples,
                 return_label=True,
             ),
-            shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
+            shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False,  # WHEN STREAMING, SHUFFLING HAPPENS UPSTREAM, SO DISABLE DATALOADER SHUFFLE.
             **loader_common_kwargs,
         )
 

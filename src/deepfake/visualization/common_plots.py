@@ -23,7 +23,7 @@ class CommonPlots:
     def _setup_plot_style(self):
         """Set up consistent plotting style across all plots."""
         sns.set_theme(context="talk", style="whitegrid")
-        # Default palette prioritises good contrast on light backgrounds.
+        # DEFAULT PALETTE PRIORITISES GOOD CONTRAST ON LIGHT BACKGROUNDS.
         palette = sns.color_palette("deep")
         plt.rcParams.update({
             'figure.figsize': (10, 6),
@@ -100,13 +100,13 @@ class CommonPlots:
         with open(json_path, 'r') as f:
             data = json.load(f)
         
-        # Extract metrics from the tracker format
+        # EXTRACT METRICS FROM THE TRACKER FORMAT.
         metrics = data.get('metrics', [])
         
         if not metrics:
             raise ValueError("No metrics found in the training history file")
         
-        # Initialize curves dictionary
+        # INITIALISE CURVES DICTIONARY WITH CORE TRAINING FIELDS.
         curves = {
             'epochs': [],
             'steps': [],
@@ -118,10 +118,10 @@ class CommonPlots:
             'timestamps': []
         }
         
-        # Track additional metrics dynamically
+        # TRACK ADDITIONAL METRIC KEYS AS THEY APPEAR SO WE CAN PLOT THEM LATER.
         additional_metric_names = set()
         
-        # Process each metric entry
+        # PROCESS EACH METRIC ENTRY AND POPULATE THE CURVES STRUCTURE.
         for metric in metrics:
             curves['epochs'].append(metric['epoch'])
             curves['steps'].append(metric['step'])
@@ -132,7 +132,7 @@ class CommonPlots:
             curves['learning_rate'].append(metric.get('learning_rate'))
             curves['timestamps'].append(metric.get('timestamp'))
             
-            # Handle additional metrics
+            # HANDLE ADDITIONAL METRICS SUCH AS DICE OR LR GROUPS.
             additional_metrics = metric.get('additional_metrics')
             if additional_metrics:
                 for key, value in additional_metrics.items():
@@ -141,20 +141,20 @@ class CommonPlots:
                         additional_metric_names.add(key)
                     curves[key][-1] = value  # Set current value
             
-            # Ensure all additional metrics have entries for this step
+            # ENSURE ALL ADDITIONAL METRICS HAVE PLACEHOLDER ENTRIES FOR EVERY EPOCH.
             for key in additional_metric_names:
                 if key not in curves:
                     curves[key] = [None] * len(curves['epochs'])
                 elif len(curves[key]) < len(curves['epochs']):
                     curves[key].append(None)
         
-        # Clean up None values for plotting
+        # CLEAN UP NONE VALUES SO MATPLOTLIB RECEIVES CLEAN NUMERIC SERIES.
         processed_curves = {}
         for key, values in curves.items():
             if key in ['epochs', 'steps', 'timestamps']:
                 processed_curves[key] = values  # Keep these as lists
             else:
-                # Filter out None values but keep track of original indices
+                # FILTER OUT NONE VALUES WHILE KEEPING TRACK OF WHICH EPOCH THEY BELONGED TO.
                 filtered_values = []
                 filtered_epochs = []
                 for i, value in enumerate(values):
@@ -166,7 +166,7 @@ class CommonPlots:
                 processed_curves[key] = filtered_values
                 processed_curves[f'{key}_epochs'] = filtered_epochs
         
-        # Add metadata
+        # ADD METADATA SO CALLERS CAN UNDERSTAND RUN DURATION AND BEST SCORES.
         processed_curves['_metadata'] = {
             'start_time': data.get('start_time'),
             'end_time': data.get('end_time'),
@@ -213,15 +213,15 @@ class CommonPlots:
         Returns:
             The full Path to the saved file.
         """
-        # Determine directory
+        # DETERMINE WHICH DIRECTORY SHOULD HOLD THE OUTPUT PLOT.
         directory = Path(save_path) if save_path else self.output_dir
         directory.mkdir(parents=True, exist_ok=True)
 
-        # Determine filename
+        # DETERMINE FILENAME, DEFAULTING TO A GENERIC NAME WHEN NOT PROVIDED.
         fname = filename or "plot.png"
         path = directory / fname
 
-        # Save and close
+        # SAVE THE FIGURE AND CLOSE IT TO FREE MEMORY.
         fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches, facecolor=facecolor)
         plt.close(fig)
         print(f"Saved plot -> {path}")

@@ -61,6 +61,7 @@ class SegmentationJointTransform:
 
         cfg = self.augment_cfg
         if cfg and getattr(cfg, "enable", False) and self.is_train:
+            # TRAIN-TIME AUGMENTATIONS APPLY RANDOM CROPS AND FLIPS TO BOTH IMAGE AND MASK.
             if getattr(cfg, "random_resized_crop", False):
                 i, j, h, w = RandomResizedCrop.get_params(
                     image,
@@ -92,6 +93,7 @@ class SegmentationJointTransform:
                 image = F.hflip(image)
                 mask = F.hflip(mask)
         else:
+            # IN EVAL MODE OR WHEN AUGMENTATION IS DISABLED, JUST RESIZE TO THE TARGET SHAPE.
             image, mask = self._resize_pair(image, mask)
 
         return image, mask
@@ -128,6 +130,7 @@ def build_classification_transform(
     ops = []
 
     if augment_cfg and augment_cfg.enable and is_train:
+        # WHEN TRAINING, ADD RANDOM CROPS, FLIPS, COLOUR JITTER, AND OPTIONAL BLURRING.
         if augment_cfg.random_resized_crop:
             ops.append(
                 RandomResizedCrop(
@@ -177,6 +180,7 @@ def build_classification_transform(
                 )
             )
     else:
+        # DURING EVAL OR WHEN AUGMENTATION IS DISABLED, PERFORM A SIMPLE RESIZE.
         ops.append(Resize((image_size, image_size), antialias=True))
 
     ops.extend(_build_common_tail(normalize_mean, normalize_std, augment_cfg if is_train else None))
@@ -206,6 +210,7 @@ def build_segmentation_transforms(
     )
 
     image_ops = []
+    # IMAGE-ONLY AUGMENTATIONS (JITTER, BLUR) APPLY AFTER GEOMETRIC STEPS PRESERVE ALIGNMENT WITH MASKS.
     if augment_cfg and augment_cfg.enable and is_train:
         if any(
             value > 0
