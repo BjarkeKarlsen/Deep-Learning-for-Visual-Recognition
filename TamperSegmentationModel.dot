@@ -1,0 +1,150 @@
+digraph TamperSegmentationModel {
+  graph [rankdir=LR, splines=true, nodesep=0.9, ranksep=1.1,
+         fontname="Helvetica", fontsize=14,
+         label="TamperSegmentationModel (ResNet34 backbone)", labelloc="t"];
+  node  [shape=plaintext, fontname="Helvetica", fontsize=11];
+  edge  [penwidth=2];
+
+  // Encoder ---------------------------------------------------------------------
+  Input [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#e8f1ff">
+      <tr><td><b>Input</b></td></tr>
+      <tr><td>B × 3 × 256 × 256</td></tr>
+    </table>
+  >];
+
+  InputProj [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>Input projection</b></td></tr>
+      <tr><td>Conv3×3, BN, ReLU</td></tr>
+      <tr><td>B × 64 × 256 × 256</td></tr>
+    </table>
+  >];
+
+  Stem [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f9fcff">
+      <tr><td><b>Stem</b></td></tr>
+      <tr><td>Conv7×7 stride2<br/>BN, ReLU</td></tr>
+      <tr><td>B × 64 × 128 × 128</td></tr>
+    </table>
+  >];
+
+  Layer1 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>Layer1</b></td></tr>
+      <tr><td>ResNet blocks ×3</td></tr>
+      <tr><td>B × 64 × 64 × 64</td></tr>
+    </table>
+  >];
+
+  Layer2 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>Layer2</b></td></tr>
+      <tr><td>ResNet blocks ×4<br/>stride=2</td></tr>
+      <tr><td>B × 128 × 32 × 32</td></tr>
+    </table>
+  >];
+
+  Layer3 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>Layer3</b></td></tr>
+      <tr><td>ResNet blocks ×6<br/>stride=2</td></tr>
+      <tr><td>B × 256 × 16 × 16</td></tr>
+    </table>
+  >];
+
+  Layer4 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>Layer4</b></td></tr>
+      <tr><td>ResNet blocks ×3<br/>stride=2</td></tr>
+      <tr><td>B × 512 × 8 × 8</td></tr>
+    </table>
+  >];
+
+  DeepMerge [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#e2efff">
+      <tr><td><b>Context merge</b></td></tr>
+      <tr><td>Upsample layer4 → 16×16<br/>Conv1×1 reduce + concat</td></tr>
+      <tr><td>B × 256 × 16 × 16</td></tr>
+    </table>
+  >];
+
+  // Decoder ---------------------------------------------------------------------
+  Dec4 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>DecoderBlock</b> (dec4)</td></tr>
+      <tr><td>Upsample ×2 → Conv1×1 (128)<br/>Concat skip4 (128) → ConvBlock</td></tr>
+      <tr><td>B × 128 × 32 × 32</td></tr>
+    </table>
+  >];
+
+  Dec3 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>DecoderBlock</b> (dec3)</td></tr>
+      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip3 (64) → ConvBlock</td></tr>
+      <tr><td>B × 64 × 64 × 64</td></tr>
+    </table>
+  >];
+
+  Dec2 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>DecoderBlock</b> (dec2)</td></tr>
+      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip2 (64) → ConvBlock</td></tr>
+      <tr><td>B × 64 × 128 × 128</td></tr>
+    </table>
+  >];
+
+  Dec1 [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#f1f6ff">
+      <tr><td><b>DecoderBlock</b> (dec1)</td></tr>
+      <tr><td>Upsample ×2 → Conv1×1 (64)<br/>Concat skip1 (64) → ConvBlock</td></tr>
+      <tr><td>B × 64 × 256 × 256</td></tr>
+    </table>
+  >];
+
+  Head [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#d1ecff">
+      <tr><td><b>Head 1×1 Conv</b></td></tr>
+      <tr><td>B × 1 × 256 × 256</td></tr>
+    </table>
+  >];
+
+  Output [label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="6" bgcolor="#e8f1ff">
+      <tr><td><b>Tamper logits</b></td></tr>
+      <tr><td>B × 1 × 256 × 256</td></tr>
+    </table>
+  >];
+
+  // Encoder edges
+  edge [color="#cc4d4d"];
+  Input -> InputProj -> Stem -> Layer1 -> Layer2 -> Layer3 -> Layer4 -> DeepMerge;
+
+  // Decoder edges
+  edge [color="#2e8b57"];
+  DeepMerge -> Dec4 -> Dec3 -> Dec2 -> Dec1 -> Head -> Output;
+
+  // Skip connections
+  edge [color="#4a74c1", style=dashed];
+  Layer2 -> Dec4 [label="skip4", constraint=false];
+  Layer1 -> Dec3 [label="skip3", constraint=false];
+  Stem    -> Dec2 [label="skip2", constraint=false];
+  InputProj -> Dec1 [label="skip1", constraint=false];
+
+  // Rank alignment for U shape
+  {rank=same; Input; InputProj; Dec1; Head; Output}
+  {rank=same; Stem; Dec2}
+  {rank=same; Layer1; Dec3}
+  {rank=same; Layer2; Dec4}
+  {rank=same; Layer3; Layer4; DeepMerge}
+
+  Legend [shape=plaintext, fontsize=10, label=<
+    <table border="0" cellborder="0" cellspacing="1" cellpadding="0" align="left">
+      <tr><td align="left"><b>Legend</b></td></tr>
+      <tr><td align="left">Red edges: encoder (ResNet34) stages</td></tr>
+      <tr><td align="left">Green edges: decoder blocks</td></tr>
+      <tr><td align="left">Blue dashed edges: skip connections (concat before ConvBlock)</td></tr>
+      <tr><td align="left">DeepMerge combines Layer3 and upsampled Layer4 (context)</td></tr>
+    </table>
+  >];
+}
