@@ -156,6 +156,55 @@ def plot_class_balance(
     return plot_path
 
 
+def plot_tamper_distribution(
+    output_dir: Path,
+    split: str,
+    tamper_pixels: Counter,
+) -> Path | None:
+    if not tamper_pixels:
+        return None
+
+    # Sort bucket labels numerically ("05%", "10%", ...)
+    def _bucket_key(label: str) -> int:
+        try:
+            return int(label.rstrip("%"))
+        except ValueError:
+            return 0
+
+    buckets = sorted(tamper_pixels.keys(), key=_bucket_key)
+    values = np.array([tamper_pixels[bucket] for bucket in buckets], dtype=float)
+    total = values.sum()
+
+    # Guard against division by zero if counters are somehow empty.
+    percentages = 100.0 * values / total if total else np.zeros_like(values)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    bars = ax.bar(buckets, values, color="#dd8452")
+    ax.set_title(f"SID {split.title()} Split Tamper-Area Distribution")
+    ax.set_ylabel("Sample Count")
+    ax.set_xlabel("Percent of Pixels Tampered")
+    ax.set_ylim(0, values.max() * 1.15 if values.size else 1)
+
+    # Thin out tick labels so the x-axis stays readable on dense histograms.
+    if buckets:
+        max_ticks = 12
+        step = max(1, len(buckets) // max_ticks)
+        tick_positions = list(range(0, len(buckets), step))
+        if tick_positions[-1] != len(buckets) - 1:
+            tick_positions.append(len(buckets) - 1)
+        tick_labels = [buckets[idx] for idx in tick_positions]
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels)
+
+    plt.xticks(rotation=45, ha="right")
+    fig.tight_layout()
+
+    plot_path = output_dir / f"tamper_distribution_{split}.png"
+    fig.savefig(plot_path, dpi=300)
+    plt.close(fig)
+    return plot_path
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -177,9 +226,12 @@ def main() -> None:
 
     summary_path = write_summary_json(output_dir, args.split, class_counts, tamper_pixels)
     plot_path = plot_class_balance(output_dir, args.split, class_counts)
+    tamper_plot_path = plot_tamper_distribution(output_dir, args.split, tamper_pixels)
 
     print(f"Wrote JSON summary to {summary_path}")
     print(f"Wrote class balance plot to {plot_path}")
+    if tamper_plot_path is not None:
+        print(f"Wrote tamper distribution plot to {tamper_plot_path}")
 
 
 if __name__ == "__main__":
