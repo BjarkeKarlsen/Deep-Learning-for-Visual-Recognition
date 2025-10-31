@@ -1,13 +1,13 @@
 {
     "task_type": "SegmentationEvaluationMetrics",
     "total_evaluations": 1,
-    "created_at": "2025-10-31T07:38:21.258704",
+    "created_at": "2025-10-31T08:01:23.307912",
     "metrics_history": [
         {
             "task_type": "segmentation",
             "primary_metric": "dice",
             "primary_score": 0.8393428100031947,
-            "timestamp": "2025-10-31T07:38:21.258522",
+            "timestamp": "2025-10-31T08:01:23.307762",
             "additional_metrics": {
                 "background_mean_probability": 0.07771165222584386,
                 "background_mean_max_probability": 0.9182914110133424,
@@ -81,20 +81,45 @@
                     82
                 ],
                 "bucket_metrics": {
-                    "<0.5%": {
-                        "count": 280,
-                        "mean_dice": 0.5612650687964574,
-                        "mean_iou": 0.4755477183378618
+                    "<0.1%": {
+                        "count": 27,
+                        "mean_dice": 0.3944300797584056,
+                        "mean_iou": 0.33359311257897
                     },
-                    "0.5%\u20132%": {
-                        "count": 625,
-                        "mean_dice": 0.7239951848515935,
-                        "mean_iou": 0.6364252652003212
+                    "0.1%\u20130.2%": {
+                        "count": 93,
+                        "mean_dice": 0.4872649172798036,
+                        "mean_iou": 0.4006495259811466
                     },
-                    ">=2%": {
-                        "count": 4095,
-                        "mean_dice": 0.8759616215435213,
-                        "mean_iou": 0.8155075546260196
+                    "0.2%\u20130.5%": {
+                        "count": 160,
+                        "mean_dice": 0.6324310612656838,
+                        "mean_iou": 0.5430371323670157
+                    },
+                    "0.5%\u20131%": {
+                        "count": 236,
+                        "mean_dice": 0.6757233309486173,
+                        "mean_iou": 0.5836219374087988
+                    },
+                    "1%\u20132%": {
+                        "count": 389,
+                        "mean_dice": 0.7532809368338619,
+                        "mean_iou": 0.6684601890018615
+                    },
+                    "2%\u20135%": {
+                        "count": 888,
+                        "mean_dice": 0.7945514495469608,
+                        "mean_iou": 0.720388860272365
+                    },
+                    "5%\u201310%": {
+                        "count": 927,
+                        "mean_dice": 0.8566632371176037,
+                        "mean_iou": 0.7872603838537883
+                    },
+                    ">=10%": {
+                        "count": 2280,
+                        "mean_dice": 0.915515057989035,
+                        "mean_iou": 0.8640384879119423
                     }
                 },
                 "threshold_metrics": {
@@ -166,7 +191,7 @@
             "task_type": "segmentation",
             "primary_metric": "dice",
             "primary_score": 0.8393428100031947,
-            "timestamp": "2025-10-31T07:38:21.258522",
+            "timestamp": "2025-10-31T08:01:23.307762",
             "mean_iou": 0.7740845176156704,
             "pixel_accuracy": 0.0,
             "dice_coefficient": 0.8393428100031947,
@@ -176,7 +201,7 @@
             "task_type": "segmentation",
             "primary_metric": "dice",
             "primary_score": 0.8393428100031947,
-            "timestamp": "2025-10-31T07:38:21.258522",
+            "timestamp": "2025-10-31T08:01:23.307762",
             "mean_iou": 0.7740845176156704,
             "pixel_accuracy": 0.0,
             "dice_coefficient": 0.8393428100031947,

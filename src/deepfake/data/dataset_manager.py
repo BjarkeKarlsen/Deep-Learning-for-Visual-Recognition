@@ -1,4 +1,5 @@
 from typing import Optional, Literal, Callable
+import numpy as np
 from datasets import Dataset, load_dataset, DownloadMode
 
 TRAIN = "train"
@@ -332,7 +333,19 @@ class DatasetFilters:
     @staticmethod
     def tampered_with_masks(example):
         """Filter for segmentation: only tampered images with valid masks."""
-        return example["label"] == 2 and example.get("mask") is not None
+        if example.get("label") != 2:
+            return False
+        mask = example.get("mask")
+        if mask is None:
+            return False
+        try:
+            mask_array = np.asarray(mask)
+            if mask_array.size == 0:
+                return False
+            mask_sum = mask_array.astype(np.float32).sum()
+        except Exception:
+            return False
+        return mask_sum > 0
     
     @staticmethod
     def classification_only(example):

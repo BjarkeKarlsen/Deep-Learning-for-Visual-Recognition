@@ -150,6 +150,7 @@ class Evaluator:
         self.threshold_stats = {threshold: {"tp": 0.0, "fp": 0.0, "fn": 0.0} for threshold in self.thresholds}
         best_examples: List[Tuple[float, Tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
         worst_examples: List[Tuple[float, Tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
+        zero_area_masks = 0
 
         mean_tensor = torch.tensor(self.cfg.model.normalize_mean, device=self.device).view(3, 1, 1)
         std_tensor = torch.tensor(self.cfg.model.normalize_std, device=self.device).view(3, 1, 1)
@@ -181,6 +182,8 @@ class Evaluator:
                     intersection = (pred_mask * true_mask).sum().item()
                     pred_sum = pred_mask.sum().item()
                     true_sum = true_mask.sum().item()
+                    if true_sum <= EPS:
+                        zero_area_masks += 1
                     dice_val = (2 * intersection + EPS) / (pred_sum + true_sum + EPS)
                     union = pred_sum + true_sum - intersection
                     iou_val = (intersection + EPS) / (union + EPS)
@@ -206,6 +209,11 @@ class Evaluator:
 
         self.bucket_summary = self._summarise_buckets(self.bucket_summary)
         self.threshold_summary = self._summarise_thresholds(self.threshold_stats)
+        if zero_area_masks:
+            self.logger.warning(
+                f"Encountered {zero_area_masks} evaluation samples with zero-area tamper masks; "
+                "consider inspecting dataset filters."
+            )
 
         best_outputs = [data for _, data in best_examples]
         worst_outputs = [data for _, data in worst_examples]
