@@ -1,0 +1,115 @@
+data:
+  dataset_name: saberzl/SID_Set
+  image_size: 256
+  train_samples: 100000
+  val_samples: 5000
+  test_samples: 5000
+  use_streaming: false
+  use_disk_cache: true
+  augment:
+    enable: true
+    random_resized_crop: true
+    scale_min: 0.7947570967602282
+    scale_max: 1.082687378001215
+    horizontal_flip_prob: 0.21143062377254143
+    color_jitter_brightness: 0.10054206488632685
+    color_jitter_contrast: 0.17180673211849204
+    color_jitter_saturation: 0.10191474353714143
+    color_jitter_hue: 0.012401324208519249
+    gaussian_blur_prob: 0.03777119652037938
+    gaussian_blur_sigma_min: 0.06902827684376737
+    gaussian_blur_sigma_max: 1.1236000900094767
+    random_erasing_prob: 0.14714225667967676
+    random_erasing_scale_min: 0.022401501033549872
+    random_erasing_scale_max: 0.18792962390595624
+    random_erasing_ratio_min: 0.15042493776473248
+    random_erasing_ratio_max: 3.9230473790769604
+    preview_samples: 12
+    preview_seed: 1234
+loader:
+  batch_size: 24
+  shuffle_train: true
+  shuffle_val: false
+  shuffle_test: false
+  num_workers: 8
+  prefetch_factor: 2
+  persistent_workers: false
+model:
+  class_names:
+  - Real
+  - Synthetic
+  - Tampered
+  num_classes: 3
+  normalize_mean:
+  - 0.485
+  - 0.456
+  - 0.406
+  normalize_std:
+  - 0.229
+  - 0.224
+  - 0.225
+  tampered_label: 2
+  base_width: 16
+  backbone:
+    name: resnet34
+    pretrained: true
+    trainable_layers: 2
+training:
+  epochs: 50
+  learning_rate: 0.0009217302894531698
+  seed: 42
+  device: cuda
+  checkpoint_frequency: 5
+  keep_checkpoints: 3
+  label_smoothing: 0.0
+  grad_clip_norm: 1.9419503581139448
+  ema_decay: 0.0
+  optimizer:
+    name: adamw
+    weight_decay: 0.0010422743803438356
+    betas:
+    - 0.9
+    - 0.95
+    momentum: 0.9
+    nesterov: false
+  scheduler:
+    name: onecycle
+    t_max: 0
+    max_lr: 0.004170024241669842
+    pct_start: 0.28438571928373746
+    div_factor: 15.23500941368672
+    final_div_factor: 10000.0
+  loss:
+    bce_weight: 0.6016331529088306
+    dice_weight: 0.3983668470911695
+evaluation:
+  report_background: true
+  background_samples: 128
+  thresholds:
+  - 0.1
+  - 0.2
+  - 0.3
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+  bucket_edges:
+  - 0.5
+  - 2.0
+  analysis_examples: 6
+paths:
+  base: outputs
+  run_id: 20251030T204741Z
+  task: segmentation
+  model_filename: best_model.pth
+  history_filename: history.json
+  metrics_filename: evaluation_metrics.json
+  log_filename: logs
+  args_filename: args.json
+  checkpoints: checkpoints
+Task:
+  CLASSIFICATION: classification
+  SEGMENTATION: segmentation
+  PLOT: plot
