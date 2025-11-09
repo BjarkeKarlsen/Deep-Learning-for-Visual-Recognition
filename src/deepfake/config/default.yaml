@@ -79,8 +79,11 @@ training:
     div_factor: 25.0
     final_div_factor: 10000.0
   loss:
+    type: bce
     bce_weight: 0.5
     dice_weight: 0.5
+    focal_alpha: 0.25
+    focal_gamma: 2.0
 
 evaluation:
   report_background: false

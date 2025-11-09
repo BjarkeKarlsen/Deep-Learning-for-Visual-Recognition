@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List, Tuple
 
 class CommonPlots:
     """Base class for plotting, with unified save logic."""
@@ -19,6 +19,7 @@ class CommonPlots:
         plt.ioff()
         self._create_save_path(self.output_dir)
         self._setup_plot_style()
+        self.palette = sns.color_palette("deep")
 
     def _setup_plot_style(self):
         """Set up consistent plotting style across all plots."""
@@ -179,6 +180,23 @@ class CommonPlots:
         }
         
         return processed_curves
+
+    @staticmethod
+    def extract_series(curves: Dict[str, Any], key: str, fallback_epochs: List[int]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Return (epochs, values) arrays for a metric key, or (None, None) if absent."""
+        values = curves.get(key)
+        if not values:
+            return None, None
+        epoch_key = curves.get(f"{key}_epochs")
+        epochs = epoch_key if epoch_key else fallback_epochs[:len(values)]
+        try:
+            epoch_arr = np.asarray(epochs, dtype=float)
+            value_arr = np.asarray(values, dtype=float)
+        except Exception:
+            return None, None
+        if value_arr.size == 0:
+            return None, None
+        return epoch_arr, value_arr
     
     def load_evaluation_report(self, json_path: Union[str, Path]) -> Dict[str, Any]:
         """

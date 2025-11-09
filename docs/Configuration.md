@@ -118,8 +118,11 @@ training:
 ### `training.loss`
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
+| `type` | str | `"bce"` | Primary segmentation loss (`"bce"` or `"focal"`). |
 | `bce_weight` | float | `0.5` | Weight applied to the binary cross-entropy term in the segmentation loss. |
 | `dice_weight` | float | `0.5` | Weight applied to the Dice loss term. |
+| `focal_alpha` | float | `0.25` | Class-balancing factor used when `type: focal`. |
+| `focal_gamma` | float | `2.0` | Modulation factor for focal loss when `type: focal`. |
 
 ---
 

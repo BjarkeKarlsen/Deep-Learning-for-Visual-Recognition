@@ -73,25 +73,50 @@ def _load_best_metric(run_root: Path, task: str) -> float:
 
 def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
     # DEFINE SEARCH SPACE FOR CLASSIFICATION EXPERIMENTS.
+    optimizer_name = trial.suggest_categorical("clf_optimizer", ["adam", "adamw"])
+    scheduler_name = trial.suggest_categorical("clf_scheduler", ["", "cosine", "onecycle"])
+    augment_enabled = trial.suggest_categorical("clf_aug_enable", [True, False])
+
+    scheduler_cfg: Dict[str, Any] = {"name": scheduler_name}
+    if scheduler_name == "onecycle":
+        scheduler_cfg.update(
+            {
+                "max_lr": trial.suggest_float("clf_max_lr", 5e-4, 5e-3, log=True),
+                "pct_start": trial.suggest_float("clf_pct_start", 0.05, 0.35),
+                "div_factor": trial.suggest_float("clf_div_factor", 5.0, 30.0),
+                "final_div_factor": 10000.0,
+            }
+        )
+    elif scheduler_name == "cosine":
+        scheduler_cfg.update(
+            {
+                "t_max": trial.suggest_int("clf_cosine_t_max", 5, 40),
+            }
+        )
+
     return {
         "training": {
-            "learning_rate": trial.suggest_float("base_lr", 5e-5, 5e-4, log=True),
+            "learning_rate": trial.suggest_float("clf_base_lr", 5e-5, 5e-3, log=True),
             "label_smoothing": trial.suggest_float("label_smoothing", 0.0, 0.08),
-            "ema_decay": trial.suggest_float("ema_decay", 0.9, 0.9999),
-            "grad_clip_norm": trial.suggest_float("grad_clip", 0.5, 2.0),
+            "ema_decay": trial.suggest_float("ema_decay", 0.0, 0.9999),
+            "grad_clip_norm": trial.suggest_float("grad_clip", 0.5, 4.0),
             "optimizer": {
+                "name": optimizer_name,
                 "weight_decay": trial.suggest_float("weight_decay", 5e-4, 5e-3, log=True),
             },
-            "scheduler": {
-                "max_lr": trial.suggest_float("max_lr", 1e-3, 5e-3, log=True),
-                "pct_start": trial.suggest_float("pct_start", 0.1, 0.4),
-                "div_factor": trial.suggest_float("div_factor", 10.0, 30.0),
-            },
+            "scheduler": scheduler_cfg,
         },
         "data": {
             "augment": {
-                "gaussian_blur_prob": trial.suggest_float("blur_prob", 0.0, 0.3),
-                "random_erasing_prob": trial.suggest_float("erasing_prob", 0.0, 0.3),
+                "enable": augment_enabled,
+                "random_resized_crop": trial.suggest_categorical("clf_rrc", [True, False]),
+                "horizontal_flip_prob": trial.suggest_float("clf_hflip", 0.0, 0.7),
+                "color_jitter_brightness": trial.suggest_float("clf_cj_bright", 0.0, 0.3),
+                "color_jitter_contrast": trial.suggest_float("clf_cj_contrast", 0.0, 0.3),
+                "color_jitter_saturation": trial.suggest_float("clf_cj_sat", 0.0, 0.3),
+                "color_jitter_hue": trial.suggest_float("clf_cj_hue", 0.0, 0.05),
+                "gaussian_blur_prob": trial.suggest_float("clf_blur_prob", 0.0, 0.4),
+                "random_erasing_prob": trial.suggest_float("clf_erasing_prob", 0.0, 0.4),
             }
         },
     }
@@ -99,51 +124,82 @@ def _sample_params_classification(trial: Trial) -> Dict[str, Any]:
 
 def _sample_params_segmentation(trial: Trial) -> Dict[str, Any]:
     # DEFINE SEARCH SPACE FOR SEGMENTATION EXPERIMENTS.
-    bce_weight = trial.suggest_float("bce_weight", 0.3, 0.7)
-    scale_min = trial.suggest_float("scale_min", 0.5, 0.85)
-    scale_delta = trial.suggest_float("scale_delta", 0.05, 0.35)
-    scale_max = min(1.2, scale_min + scale_delta)
-    flip_prob = trial.suggest_float("horizontal_flip_prob", 0.2, 0.8)
-    blur_prob = trial.suggest_float("blur_prob", 0.0, 0.3)
-    blur_sigma_min = trial.suggest_float("blur_sigma_min", 0.05, 0.2)
-    blur_sigma_max = trial.suggest_float("blur_sigma_max", 0.8, 2.0)
+    scheduler_name = trial.suggest_categorical("seg_scheduler", ["onecycle", "cosine"])
+    scheduler_cfg: Dict[str, Any] = {"name": scheduler_name}
+    if scheduler_name == "onecycle":
+        scheduler_cfg.update(
+            {
+                "max_lr": trial.suggest_float("seg_max_lr", 1e-3, 6e-3, log=True),
+                "pct_start": trial.suggest_float("seg_pct_start", 0.05, 0.4),
+                "div_factor": trial.suggest_float("seg_div_factor", 5.0, 30.0),
+                "final_div_factor": 10000.0,
+            }
+        )
+    else:
+        scheduler_cfg.update(
+            {
+                "t_max": trial.suggest_int("seg_cosine_t_max", 10, 60),
+            }
+        )
+
+    loss_type = trial.suggest_categorical("seg_loss_type", ["bce", "focal"])
+    primary_weight = trial.suggest_float("seg_primary_weight", 0.3, 0.8)
+    loss_cfg: Dict[str, Any] = {
+        "type": loss_type,
+        "bce_weight": primary_weight,
+        "dice_weight": 1.0 - primary_weight,
+    }
+    if loss_type == "focal":
+        loss_cfg.update(
+            {
+                "focal_alpha": trial.suggest_float("seg_focal_alpha", 0.1, 0.6),
+                "focal_gamma": trial.suggest_float("seg_focal_gamma", 1.0, 5.0),
+            }
+        )
+
+    augment_enabled = trial.suggest_categorical("seg_aug_enable", [True, False])
+    scale_min = trial.suggest_float("scale_min", 0.4, 0.9)
+    scale_delta = trial.suggest_float("scale_delta", 0.05, 0.4)
+    scale_max = min(1.3, scale_min + scale_delta)
+    flip_prob = trial.suggest_float("horizontal_flip_prob", 0.0, 0.9)
+    blur_prob = trial.suggest_float("blur_prob", 0.0, 0.4)
+    blur_sigma_min = trial.suggest_float("blur_sigma_min", 0.03, 0.2)
+    blur_sigma_max = trial.suggest_float("blur_sigma_max", 0.5, 2.5)
     if blur_sigma_max <= blur_sigma_min:
         blur_sigma_max = blur_sigma_min + 0.1
 
-    cj_brightness = trial.suggest_float("color_jitter_brightness", 0.0, 0.3)
-    cj_contrast = trial.suggest_float("color_jitter_contrast", 0.0, 0.3)
-    cj_saturation = trial.suggest_float("color_jitter_saturation", 0.0, 0.2)
-    cj_hue = trial.suggest_float("color_jitter_hue", 0.0, 0.05)
+    cj_brightness = trial.suggest_float("color_jitter_brightness", 0.0, 0.35)
+    cj_contrast = trial.suggest_float("color_jitter_contrast", 0.0, 0.35)
+    cj_saturation = trial.suggest_float("color_jitter_saturation", 0.0, 0.3)
+    cj_hue = trial.suggest_float("color_jitter_hue", 0.0, 0.08)
 
-    re_prob = trial.suggest_float("random_erasing_prob", 0.0, 0.2)
-    re_scale_min = trial.suggest_float("random_erasing_scale_min", 0.005, 0.05)
-    re_scale_max = trial.suggest_float("random_erasing_scale_max", 0.05, 0.4)
+    re_prob = trial.suggest_float("random_erasing_prob", 0.0, 0.25)
+    re_scale_min = trial.suggest_float("random_erasing_scale_min", 0.002, 0.05)
+    re_scale_max = trial.suggest_float("random_erasing_scale_max", 0.05, 0.45)
     if re_scale_max <= re_scale_min:
         re_scale_max = re_scale_min + 0.01
-    re_ratio_min = trial.suggest_float("random_erasing_ratio_min", 0.1, 0.5)
-    re_ratio_max = trial.suggest_float("random_erasing_ratio_max", 2.0, 4.0)
+    re_ratio_min = trial.suggest_float("random_erasing_ratio_min", 0.1, 0.7)
+    re_ratio_max = trial.suggest_float("random_erasing_ratio_max", 1.5, 5.0)
     if re_ratio_max <= re_ratio_min:
         re_ratio_max = re_ratio_min + 0.5
 
     return {
         "training": {
-            "learning_rate": trial.suggest_float("base_lr", 5e-4, 2e-3, log=True),
-            "grad_clip_norm": trial.suggest_float("grad_clip", 0.5, 2.0),
+            "learning_rate": trial.suggest_float("seg_base_lr", 3e-4, 3e-3, log=True),
+            "grad_clip_norm": trial.suggest_float("seg_grad_clip", 0.5, 3.0),
+            "ema_decay": trial.suggest_float("seg_ema_decay", 0.0, 0.999),
             "optimizer": {
-                "weight_decay": trial.suggest_float("weight_decay", 5e-4, 5e-3, log=True),
+                "weight_decay": trial.suggest_float("seg_weight_decay", 1e-5, 5e-3, log=True),
             },
-            "scheduler": {
-                "max_lr": trial.suggest_float("max_lr", 2e-3, 6e-3, log=True),
-                "pct_start": trial.suggest_float("pct_start", 0.1, 0.4),
-                "div_factor": trial.suggest_float("div_factor", 10.0, 30.0),
-            },
-            "loss": {
-                "bce_weight": bce_weight,
-                "dice_weight": 1.0 - bce_weight,
-            },
+            "scheduler": scheduler_cfg,
+            "loss": loss_cfg,
+        },
+        "loader": {
+            "batch_size": trial.suggest_categorical("seg_batch_size", [8, 12, 16, 20, 24, 28, 32]),
         },
         "data": {
             "augment": {
+                "enable": augment_enabled,
                 "gaussian_blur_prob": blur_prob,
                 "gaussian_blur_sigma_min": blur_sigma_min,
                 "gaussian_blur_sigma_max": blur_sigma_max,

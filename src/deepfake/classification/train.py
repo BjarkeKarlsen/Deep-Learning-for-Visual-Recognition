@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Dict
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets import DownloadMode
@@ -37,10 +37,12 @@ class Trainer:
         logger: SidLogger,
         metrics_tracker: TrainingMetricsTracker,
         checkpoint_mgr: CheckpointManager,
-        persister: IModelPersister = None
+        persister: IModelPersister = None,
+        verbose: bool = True,
     ):
         self.cfg = cfg
         self.device = torch.device(cfg.training.device)
+        self.verbose = verbose
         # SHARED UTILITIES TRACK LOGS, METRICS, AND CHECKPOINTS SO RUNS CAN BE RESTARTED SAFELY.
         self.logger = logger
         self.metrics_tracker = metrics_tracker
@@ -56,6 +58,8 @@ class Trainer:
         self.scaler = GradScaler(enabled=self.amp_enabled)
         self.scheduler = None
         self.scheduler_step_mode = "epoch"
+        self.grad_clip_threshold = getattr(cfg.training, "grad_clip_norm", 0.0)
+        self._last_grad_stats: Optional[Dict[str, float]] = None
         self.ema_model = None
 
         if cfg.training.ema_decay > 0:
@@ -114,6 +118,11 @@ class Trainer:
             current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
 
             # UPDATE METRIC HISTORY WITH THE LATEST SNAPSHOT.
+            additional_metrics: Dict[str, float] = {}
+            grad_stats = getattr(self, "_last_grad_stats", None)
+            if grad_stats:
+                additional_metrics.update(grad_stats)
+
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
                 step=base_step,
@@ -122,6 +131,7 @@ class Trainer:
                 train_acc=train_acc,
                 val_acc=val_acc,
                 learning_rate=current_lr,
+                additional_metrics=additional_metrics,
             ))
 
             train_acc_display = (
@@ -136,6 +146,14 @@ class Trainer:
                 val_acc=val_acc_display,
                 lr=current_lr,
             )
+
+            if grad_stats and self.verbose:
+                self.logger.logger.info(
+                    "Gradients -> avg %.3f | max %.3f | clip_frac %.1f%%",
+                    grad_stats["grad_norm_avg"],
+                    grad_stats["grad_norm_max"],
+                    grad_stats["grad_clip_frac"] * 100.0,
+                )
 
             if val_acc is not None and not math.isnan(val_acc) and val_acc > prev_best_val:
                 self.persister.save_model(self._model_for_export(), self.cfg.paths.model_path)
@@ -181,9 +199,17 @@ class Trainer:
         train_correct = 0
         train_total = 0
         batch_count = 0
+        grad_norm_sum = 0.0
+        grad_norm_max = 0.0
+        grad_clip_events = 0
+        clip_threshold = self.grad_clip_threshold
 
         # PROGRESS BAR PROVIDES FRIENDLY FEEDBACK DURING EACH EPOCH.
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}")
+        pbar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}",
+            disable=not self.verbose,
+        )
         for batch in pbar:
             # PROCESS ONE MINI-BATCH: FORWARD PASS, LOSS, BACKWARD PASS, AND OPTIMISER STEP.
             images = batch["image"].to(self.device)
@@ -198,9 +224,14 @@ class Trainer:
 
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
-            clip_norm = getattr(self.cfg.training, "grad_clip_norm", 0.0)
-            if clip_norm and clip_norm > 0:
-                clip_grad_norm_(self.model.parameters(), clip_norm)
+            if clip_threshold and clip_threshold > 0:
+                grad_norm = float(clip_grad_norm_(self.model.parameters(), clip_threshold))
+                if grad_norm > clip_threshold:
+                    grad_clip_events += 1
+            else:
+                grad_norm = self._compute_grad_norm(self.model.parameters())
+            grad_norm_sum += grad_norm
+            grad_norm_max = max(grad_norm_max, grad_norm)
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
@@ -215,12 +246,36 @@ class Trainer:
             train_total += batch_size
             train_correct += (predicted == labels).sum().item()
 
-            pbar.set_postfix({'loss': f'{loss.item():.3f}'})
+            if self.verbose:
+                pbar.set_postfix({'loss': f'{loss.item():.3f}'})
 
         train_acc = train_correct / train_total if train_total else None
         avg_train_loss = train_loss / train_total if train_total else float('nan')
 
+        steps = max(batch_count, 1)
+        avg_grad_norm = grad_norm_sum / steps
+        clip_fraction = grad_clip_events / steps
+        self._last_grad_stats = {
+            "grad_norm_avg": avg_grad_norm,
+            "grad_norm_max": grad_norm_max,
+            "grad_clip_frac": clip_fraction,
+        }
+        if clip_threshold and clip_threshold > 0 and clip_fraction > 0.3 and self.verbose:
+            self.logger.logger.warning(
+                f"Gradient clipping triggered on {clip_fraction:.1%} of batches (threshold {clip_threshold})."
+            )
+
         return train_acc, avg_train_loss, batch_count
+
+    @staticmethod
+    def _compute_grad_norm(parameters) -> float:
+        total_sq = 0.0
+        for p in parameters:
+            if p.grad is None:
+                continue
+            param_norm = p.grad.data.float().norm(2)
+            total_sq += float(param_norm.item() ** 2)
+        return math.sqrt(total_sq) if total_sq > 0 else 0.0
     
     @torch.no_grad()  # DISABLE GRADIENTS DURING VALIDATION TO SAVE MEMORY AND SPEED UP EXECUTION.
     def _evaluation(self, val_loader: DataLoader, model: Optional[nn.Module] = None):

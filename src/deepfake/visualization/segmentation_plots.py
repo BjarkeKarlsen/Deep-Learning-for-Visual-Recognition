@@ -30,6 +30,7 @@ class SegmentationPlots(CommonPlots):
             "train_dice": "#2ca02c",
             "val_dice": "#9467bd",
             "bce_loss": "#17becf",
+            "focal_loss": "#17becf",
             "dice_loss": "#ffbb78",
             "learning_rate": "#ff7f0e",
             "bucket_bar": "#4c72b0",
@@ -39,6 +40,8 @@ class SegmentationPlots(CommonPlots):
             "threshold_dice": "#9467bd",
             "background_cov": "#4c72b0",
             "background_max": "#dd8452",
+            "grad_norm": "#e377c2",
+            "grad_clip": "#7f7f7f",
         }
 
     def plot_segmentation(self, image: np.ndarray, true_mask: np.ndarray, pred_mask: np.ndarray, 
@@ -181,228 +184,132 @@ class SegmentationPlots(CommonPlots):
         self.save_plot(fig, filename=filename or "segmentation_gallery.png", save_path=save_path)
 
     def plot_training_history(self, filename: Optional[str] = None, save_path: Optional[str] = None) -> None:
-        """Plot segmentation loss and Dice curves extracted from the history dictionary."""
+        """Plot segmentation training diagnostics with loss, dice, components, and gradients."""
         if self.history is None:
             print("No training history loaded. Cannot plot training curves.")
             return
-            
-        curves = self.history
 
-        # NUMBER OF EPOCHS IS DETERMINED BY THE LENGTH OF THE TRAIN LOSS SERIES.
-        n_epochs = len(curves.get('train_loss', []))
-        if n_epochs == 0:
+        curves = self.history
+        train_loss_series = curves.get("train_loss", [])
+        if not train_loss_series:
             print("No training loss data found in history.")
             return
-            
-        epochs = range(1, n_epochs + 1)
 
-        # HANDLE DICE METRICS IF AVAILABLE SO WE CAN PLOT THEM ALONGSIDE LOSSES.
-        raw_train_dice = curves.get('train_dice', [])
-        raw_val_dice = curves.get('val_dice', [])
-        
-        def pad_curve(values: List[float], length: int) -> List[float]:
-            """Pad or trim a curve to ensure it matches the number of epochs."""
-            data = list(values)
-            if len(data) < length:
-                data.extend([np.nan] * (length - len(data)))
-            elif len(data) > length:
-                data = data[:length]
-            return data
+        fallback_epochs = list(curves.get("train_loss_epochs") or curves.get("epochs", []))
+        if not fallback_epochs:
+            fallback_epochs = list(range(1, len(train_loss_series) + 1))
 
-        # PAD DICE ARRAYS TO MATCH EPOCH COUNT SO CURVES ALIGN.
-        train_dice = pad_curve(raw_train_dice, n_epochs)
-        val_dice = pad_curve(raw_val_dice, n_epochs)
+        fig, axes = plt.subplots(2, 2, figsize=(16, 9))
+        fig.subplots_adjust(hspace=0.32, wspace=0.28)
+        ax_loss, ax_dice, ax_components, ax_grad = axes.flatten()
 
-        # DETERMINE WHETHER TO SHOW EXTRA PANELS FOR BCE/DICE COMPONENT BREAKDOWNS.
-        extra_head_losses = any(
-            key in curves
-            for key in (
-                "train_bce_weighted",
-                "train_dice_weighted",
-                "val_bce_weighted",
-                "val_dice_weighted",
-                "train_bce_raw",
-                "train_dice_raw",
-                "val_bce_raw",
-                "val_dice_raw",
-            )
-        )
-        num_panels = 3 if extra_head_losses else 2
-        fig, axes = plt.subplots(1, num_panels, figsize=(7 * num_panels, 6))
-        fig.patch.set_facecolor('white')
-        if num_panels == 2:
-            ax1, ax2 = axes
-            ax3 = None
+        # Loss panel
+        train_loss_epochs, train_loss_vals = self.extract_series(curves, "train_loss", fallback_epochs)
+        val_loss_epochs, val_loss_vals = self.extract_series(curves, "val_loss", fallback_epochs)
+        if train_loss_vals is not None:
+            ax_loss.plot(train_loss_epochs, train_loss_vals, color=self.colors["train_loss"], linewidth=2.2, label="Train")
+        if val_loss_vals is not None and np.isfinite(val_loss_vals).any():
+            ax_loss.plot(val_loss_epochs, val_loss_vals, color=self.colors["val_loss"], linewidth=2.0, linestyle="--", label="Val")
+            best_idx = int(np.nanargmin(val_loss_vals))
+            ax_loss.scatter(val_loss_epochs[best_idx], val_loss_vals[best_idx], color=self.colors["val_loss"], edgecolors="white", s=70, zorder=5)
+        self._style_axis(ax_loss, title="Loss", xlabel="Epoch", ylabel="Loss", grid=False, facecolor='white')
+        if ax_loss.has_data():
+            ax_loss.legend(frameon=False, loc="upper right")
+
+        # Dice panel
+        train_dice_epochs, train_dice_vals = self.extract_series(curves, "train_dice", fallback_epochs)
+        val_dice_epochs, val_dice_vals = self.extract_series(curves, "val_dice", fallback_epochs)
+        if train_dice_vals is not None:
+            ax_dice.plot(train_dice_epochs, train_dice_vals, color=self.colors["train_dice"], linewidth=2.2, label="Train")
+        if val_dice_vals is not None and np.isfinite(val_dice_vals).any():
+            ax_dice.plot(val_dice_epochs, val_dice_vals, color=self.colors["val_dice"], linewidth=2.0, linestyle="--", label="Val")
+            best_idx = int(np.nanargmax(val_dice_vals))
+            ax_dice.scatter(val_dice_epochs[best_idx], val_dice_vals[best_idx], color=self.colors["val_dice"], edgecolors="white", s=70, zorder=5)
+        self._style_axis(ax_dice, title="Dice score", xlabel="Epoch", ylabel="Dice", grid=False, facecolor='white')
+        ax_dice.set_ylim(0, 1.02)
+        if ax_dice.has_data():
+            ax_dice.legend(frameon=False, loc="lower right")
+
+        # Loss component panel
+        primary_name = "focal" if "train_focal_weighted" in curves or "val_focal_weighted" in curves else "bce"
+        comp_color = self.colors.get(f"{primary_name}_loss", self.colors["bce_loss"])
+        component_keys = [
+            (f"train_{primary_name}_weighted", "Train primary", comp_color, "-"),
+            (f"val_{primary_name}_weighted", "Val primary", comp_color, "--"),
+            ("train_dice_weighted", "Train dice", self.colors["dice_loss"], "-"),
+            ("val_dice_weighted", "Val dice", self.colors["dice_loss"], "--"),
+        ]
+        plotted_components = False
+        for key, label, color, style in component_keys:
+            epochs_arr, values_arr = self.extract_series(curves, key, fallback_epochs)
+            if values_arr is not None:
+                ax_components.plot(epochs_arr, values_arr, color=color, linewidth=2.0, linestyle=style, label=label)
+                plotted_components = True
+        if plotted_components:
+            self._style_axis(ax_components, title="Weighted loss components", xlabel="Epoch", ylabel="Loss", grid=False, facecolor='white')
+            ax_components.legend(frameon=False, loc="upper right")
         else:
-            ax1, ax2, ax3 = axes
+            ax_components.axis("off")
 
-        # LOSS PLOT SHOWS HOW TRAINING AND VALIDATION LOSSES CHANGE OVER TIME.
-        train_loss = np.asarray(curves.get('train_loss', []), dtype=float)
-        val_loss_raw = pad_curve(curves.get('val_loss', []), n_epochs) if curves.get('val_loss') else []
-        val_loss = np.asarray(val_loss_raw, dtype=float) if val_loss_raw else np.full_like(train_loss, np.nan)
+        # Gradients & learning rate panel
+        grad_epochs, grad_avg = self.extract_series(curves, "grad_norm_avg", fallback_epochs)
+        _, grad_max = self.extract_series(curves, "grad_norm_max", fallback_epochs)
+        clip_epochs, clip_vals = self.extract_series(curves, "grad_clip_frac", fallback_epochs)
+        lr_epochs, lr_vals = self.extract_series(curves, "learning_rate", fallback_epochs)
 
-        ax1.plot(
-            epochs,
-            train_loss,
-            color=self.colors["train_loss"],
-            marker='o',
-            markerfacecolor='white',
-            markeredgecolor=self.colors["train_loss"],
-            linewidth=2.2,
-            markersize=5,
-            label='Training Loss',
-        )
+        ax_grad_plotted = False
+        if grad_avg is not None:
+            ax_grad.plot(grad_epochs, grad_avg, color=self.colors["grad_norm"], linewidth=2.0, label="Grad norm (avg)")
+            ax_grad_plotted = True
+        if grad_max is not None:
+            ax_grad.plot(grad_epochs, grad_max, color=self.colors["grad_norm"], linewidth=1.8, linestyle="--", alpha=0.75, label="Grad norm (max)")
+            ax_grad_plotted = True
 
-        if np.isfinite(val_loss).any():
-            ax1.plot(
-                epochs,
-                val_loss,
-                color=self.colors["val_loss"],
-                marker='o',
-                markerfacecolor='white',
-                markeredgecolor=self.colors["val_loss"],
-                linewidth=2.2,
-                markersize=5,
-                label='Validation Loss',
-            )
-            best_val_idx = int(np.nanargmin(val_loss))
-            ax1.scatter(
-                epochs[best_val_idx],
-                val_loss[best_val_idx],
-                s=110,
-                color=self.colors["val_loss"],
-                edgecolors='white',
-                linewidth=1.5,
-                zorder=6,
-            )
-            ax1.annotate(
-                f"Best val: {val_loss[best_val_idx]:.3f}\nEpoch {best_val_idx+1}",
-                xy=(epochs[best_val_idx], val_loss[best_val_idx]),
-                xytext=(epochs[best_val_idx] + 0.4, val_loss[best_val_idx] + 0.04),
-                arrowprops=dict(arrowstyle='->', color=self.colors["val_loss"], lw=1.4),
-                fontsize=10,
-                bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=self.colors["val_loss"], alpha=0.85),
-            )
+        clip_axis = None
+        if clip_vals is not None:
+            clip_percent = clip_vals * 100.0
+            clip_axis = ax_grad.twinx()
+            clip_axis.bar(clip_epochs, clip_percent, width=0.4, alpha=0.25, color=self.colors["grad_clip"], label="Clip %")
+            clip_axis.set_ylabel("Clip %", color=self.colors["grad_clip"])
+            clip_axis.tick_params(axis='y', labelcolor=self.colors["grad_clip"])
+            clip_axis.set_ylim(0, max(clip_percent) * 1.2 if clip_percent.size else 1)
 
-        self._style_axis(ax1, title='Segmentation Loss', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
-        ax1.legend(loc="upper right", frameon=False)
+        lr_series = []
+        if lr_vals is not None and np.all(lr_vals > 0):
+            lr_series.append((lr_epochs, lr_vals, "LR (base)"))
+        for key in sorted(k for k in curves if k.startswith("lr_group_") and not k.endswith("_epochs")):
+            g_epochs, g_vals = self.extract_series(curves, key, fallback_epochs)
+            if g_vals is not None and np.all(g_vals > 0):
+                lr_series.append((g_epochs, g_vals, key.replace("_", " ").title()))
 
-        # Dice plot
-        if raw_train_dice or raw_val_dice:
-            train_dice_arr = np.asarray(train_dice, dtype=float)
-            val_dice_arr = np.asarray(val_dice, dtype=float)
-            ax2.plot(
-                epochs,
-                train_dice_arr,
-                color=self.colors["train_dice"],
-                marker='o',
-                markerfacecolor='white',
-                markeredgecolor=self.colors["train_dice"],
-                linewidth=2.2,
-                markersize=5,
-                label='Training Dice',
-            )
-            if np.isfinite(val_dice_arr).any():
-                ax2.plot(
-                    epochs,
-                    val_dice_arr,
-                    color=self.colors["val_dice"],
-                    marker='o',
-                    markerfacecolor='white',
-                    markeredgecolor=self.colors["val_dice"],
-                    linewidth=2.2,
-                    markersize=5,
-                    label='Validation Dice',
-                )
-                best_dice_idx = int(np.nanargmax(val_dice_arr))
-                ax2.scatter(
-                    epochs[best_dice_idx],
-                    val_dice_arr[best_dice_idx],
-                    s=110,
-                    color=self.colors["val_dice"],
-                    edgecolors='white',
-                    linewidth=1.5,
-                    zorder=6,
-                )
-                ax2.annotate(
-                    f"Peak val Dice: {val_dice_arr[best_dice_idx]:.3f}\nEpoch {best_dice_idx+1}",
-                    xy=(epochs[best_dice_idx], val_dice_arr[best_dice_idx]),
-                    xytext=(epochs[best_dice_idx] + 0.5, min(0.97, val_dice_arr[best_dice_idx] + 0.06)),
-                    arrowprops=dict(arrowstyle='->', color=self.colors["val_dice"], lw=1.4),
-                    fontsize=10,
-                    bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=self.colors["val_dice"], alpha=0.85),
-                )
+        lr_axis = None
+        if lr_series:
+            lr_axis = clip_axis if clip_axis is not None else ax_grad.twinx()
+            for idx, (epochs_arr, values_arr, label) in enumerate(lr_series):
+                lr_axis.plot(epochs_arr, values_arr, linewidth=1.8, linestyle="-" if idx == 0 else "--", color=self.colors["learning_rate"], alpha=0.85 if idx == 0 else 0.65, label=label)
+            min_lr = min(float(np.nanmin(values_arr)) for _, values_arr, _ in lr_series)
+            if min_lr > 0:
+                lr_axis.set_yscale('log')
+            lr_axis.set_ylabel("Learning rate", color=self.colors["learning_rate"])
+            lr_axis.tick_params(axis='y', labelcolor=self.colors["learning_rate"])
 
-            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score', grid=False, facecolor='white')
-            ax2.set_ylim(0, 1.02)
-            ax2.legend(loc="lower right", frameon=False)
+        if ax_grad_plotted or clip_axis is not None or lr_axis is not None:
+            self._style_axis(ax_grad, title="Gradients & learning rate", xlabel="Epoch", ylabel="Norm", grid=False, facecolor='white')
+            handles, labels = ax_grad.get_legend_handles_labels()
+            if clip_axis is not None:
+                h_clip, l_clip = clip_axis.get_legend_handles_labels()
+                handles.extend(h_clip)
+                labels.extend(l_clip)
+            if lr_axis is not None:
+                h_lr, l_lr = lr_axis.get_legend_handles_labels()
+                handles.extend(h_lr)
+                labels.extend(l_lr)
+            if handles:
+                ax_grad.legend(handles, labels, frameon=False, loc="upper right")
         else:
-            ax2.text(
-                0.5,
-                0.5,
-                'No Dice score data available',
-                horizontalalignment='center',
-                verticalalignment='center',
-                transform=ax2.transAxes,
-                fontsize=12,
-                color="#555555",
-            )
-            self._style_axis(ax2, title='Segmentation Dice Over Epochs', xlabel='Epoch', ylabel='Dice Score', grid=False, facecolor='white')
-            ax2.set_ylim(0, 1.02)
-
-        if ax3 is not None:
-            component_keys = (
-                "train_bce_weighted",
-                "val_bce_weighted",
-                "train_dice_weighted",
-                "val_dice_weighted",
-                "train_bce_raw",
-                "val_bce_raw",
-                "train_dice_raw",
-                "val_dice_raw",
-            )
-            if any(key in curves for key in component_keys):
-                def _plot_series(key: str, label: str, color: str, linestyle: str, marker: str) -> bool:
-                    data = curves.get(key)
-                    if not data:
-                        return False
-                    values = np.asarray(pad_curve(data, n_epochs), dtype=float)
-                    ax3.plot(
-                        epochs,
-                        values,
-                        color=color,
-                        linestyle=linestyle,
-                        linewidth=2,
-                        marker=marker,
-                        markerfacecolor='white',
-                        markeredgecolor=color,
-                        markersize=5,
-                        label=label,
-                    )
-                    return True
-
-                any_plotted = False
-                any_plotted |= _plot_series("train_bce_weighted", "Train BCE (weighted)", self.colors["bce_loss"], '-', 'o')
-                any_plotted |= _plot_series("val_bce_weighted", "Val BCE (weighted)", self.colors["bce_loss"], '--', 'o')
-                any_plotted |= _plot_series("train_bce_raw", "Train BCE (raw)", self.colors["bce_loss"], '-.', 'o')
-                any_plotted |= _plot_series("val_bce_raw", "Val BCE (raw)", self.colors["bce_loss"], ':', 'o')
-
-                any_plotted |= _plot_series("train_dice_weighted", "Train Dice (weighted)", self.colors["dice_loss"], '-', 's')
-                any_plotted |= _plot_series("val_dice_weighted", "Val Dice (weighted)", self.colors["dice_loss"], '--', 's')
-                any_plotted |= _plot_series("train_dice_raw", "Train Dice (raw)", self.colors["dice_loss"], '-.', 's')
-                any_plotted |= _plot_series("val_dice_raw", "Val Dice (raw)", self.colors["dice_loss"], ':', 's')
-
-                if any_plotted:
-                    self._style_axis(ax3, title='Loss Components', xlabel='Epoch', ylabel='Loss', grid=False, facecolor='white')
-                    ax3.legend(loc="upper right", frameon=False)
-                else:
-                    ax3.axis("off")
-            else:
-                ax3.axis("off")
+            ax_grad.axis("off")
 
         plt.tight_layout()
-        
-        # Use the base class save_plot method
         self.save_plot(fig, filename=filename or "training_history.png", save_path=save_path)
 
     def plot_learning_rate_schedule(self, filename: Optional[str] = None, save_path: Optional[str] = None) -> None:

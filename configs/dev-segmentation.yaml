@@ -81,8 +81,11 @@ training:
     div_factor: 15.23500941368672
     final_div_factor: 10000.0
   loss:
+    type: focal
     bce_weight: 0.6016331529088306
     dice_weight: 0.39836684709116946
+    focal_alpha: 0.25
+    focal_gamma: 2.0
 
 evaluation:
   report_background: true

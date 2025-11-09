@@ -1,0 +1,25 @@
+data:
+  dataset_name: saberzl/SID_Set
+  image_size: 128
+  train_samples: 24
+  val_samples: 8
+  test_samples: 8
+  use_streaming: true
+  augment:
+    enable: false
+
+loader:
+  batch_size: 4
+  num_workers: 0
+  shuffle_train: true
+  shuffle_val: false
+  shuffle_test: false
+
+training:
+  epochs: 4
+  learning_rate: 0.0008
+  checkpoint_frequency: 0
+  keep_checkpoints: 1
+
+paths:
+  task: classification

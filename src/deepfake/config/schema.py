@@ -103,8 +103,11 @@ class SchedulerConfig:
 @dataclass
 # LOSS SETTINGS TUNE THE RELATIVE WEIGHTS OF BCE AND DICE TERMS FOR SEGMENTATION.
 class LossConfig:
+    type: str = "bce"
     bce_weight: float = 0.5
     dice_weight: float = 0.5
+    focal_alpha: float = 0.25
+    focal_gamma: float = 2.0
 
 @dataclass
 # TRAINING SETTINGS COVER GLOBAL HYPERPARAMETERS, DEVICE SELECTION, AND BOOK-KEEPING CADENCE.

@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+import math
 
 import torch
 import torch.nn as nn
@@ -9,6 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets import DownloadMode
 from torch.amp import autocast, GradScaler
+from torch.optim.swa_utils import AveragedModel
 
 from deepfake.config import Config
 from deepfake.utils.checkpoint_manager import CheckpointManager
@@ -23,6 +25,7 @@ from deepfake.utils.scheduler_factory import SchedulerFactory
 from deepfake.visualization.segmentation_plots import SegmentationPlots
 from .dice_coefficient import dice_coefficient, soft_dice_loss
 from deepfake.utils.augmentation_factory import build_segmentation_transforms
+from deepfake.utils.losses import FocalLoss
 
 try:
     from torchinfo import summary as torchinfo_summary  # type: ignore
@@ -42,47 +45,71 @@ class Trainer:
         logger: SidLogger,
         metrics_tracker: TrainingMetricsTracker,
         checkpoint_mgr: CheckpointManager,
-        persister: IModelPersister = None
+        persister: IModelPersister = None,
+        verbose: bool = True
     ):
         self.cfg = cfg
         # STORE REFERENCES TO LOGGER, METRICS TRACKER, AND CHECKPOINT MANAGER FOR LATER USE.
         self.logger = logger
         self.device = torch.device(cfg.training.device)
+        self.verbose = verbose
 
         # INITIALISE THE SEGMENTATION MODEL PLUS OPTIMISER, LOSSES, AND MIXED PRECISION HELPERS.
         self.model = TamperSegmentationModel(model_cfg=cfg.model, in_channels=3, out_channels=1).to(self.device)
         self._log_model_summary()
         self._save_model_visualizations()
-        self.bce_loss = nn.BCEWithLogitsLoss()
         loss_cfg = getattr(cfg.training, "loss", None)
-        self.bce_weight = getattr(loss_cfg, "bce_weight", 0.5)
-        self.dice_weight = getattr(loss_cfg, "dice_weight", 0.5)
-        total_weight = self.bce_weight + self.dice_weight
+        loss_type = getattr(loss_cfg, "type", "bce") if loss_cfg is not None else "bce"
+        loss_type = str(loss_type).lower()
+        self.primary_loss_name = "focal" if loss_type == "focal" else "bce"
+        if self.primary_loss_name == "focal":
+            alpha = getattr(loss_cfg, "focal_alpha", 0.25)
+            gamma = getattr(loss_cfg, "focal_gamma", 2.0)
+            self.primary_loss_fn = FocalLoss(alpha=alpha, gamma=gamma, reduction="mean")
+        else:
+            self.primary_loss_fn = nn.BCEWithLogitsLoss()
+
+        self.primary_weight = getattr(loss_cfg, "bce_weight", 0.5) if loss_cfg is not None else 0.5
+        self.dice_weight = getattr(loss_cfg, "dice_weight", 0.5) if loss_cfg is not None else 0.5
+        total_weight = self.primary_weight + self.dice_weight
         if total_weight > 0:
-            self.bce_weight /= total_weight
+            self.primary_weight /= total_weight
             self.dice_weight /= total_weight
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.amp_enabled = (self.device.type == "cuda" and torch.cuda.is_available())
         self.scaler = GradScaler(enabled=self.amp_enabled)
         self.scheduler = None
         self.scheduler_step_mode = "epoch"
+        self.grad_clip_threshold = getattr(cfg.training, "grad_clip_norm", 0.0)
+        self.ema_model: Optional[AveragedModel] = None
+        ema_decay = getattr(cfg.training, "ema_decay", 0.0)
+        if ema_decay and ema_decay > 0:
+            self.ema_model = AveragedModel(
+                self.model,
+                avg_fn=lambda averaged_param, model_param, _: ema_decay * averaged_param + (1.0 - ema_decay) * model_param,
+            )
+            self.ema_model.to(self.device)
 
         # SAVE HANDLES TO PERSISTENCE AND TRACKING UTILITIES SO RUNS CAN RESUME CLEANLY.
         self.persister = persister or TorchModelPersister()
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
 
+        primary = self.primary_loss_name
         metric_directions = {
             "train_dice": "max",
             "val_dice": "max",
-            "train_bce_weighted": "min",
+            f"train_{primary}_weighted": "min",
             "train_dice_weighted": "min",
-            "val_bce_weighted": "min",
+            f"val_{primary}_weighted": "min",
             "val_dice_weighted": "min",
-            "train_bce_raw": "min",
+            f"train_{primary}_raw": "min",
             "train_dice_raw": "min",
-            "val_bce_raw": "min",
+            f"val_{primary}_raw": "min",
             "val_dice_raw": "min",
+            "grad_norm_avg": "last",
+            "grad_norm_max": "last",
+            "grad_clip_frac": "min",
         }
         for idx, _ in enumerate(self.optimizer.param_groups):
             metric_directions[f"lr_group_{idx}"] = "last"
@@ -95,6 +122,12 @@ class Trainer:
         self._log_backbone_trainability()
         logger.log_training_config(asdict(cfg))
 
+        if self.cfg.paths.model_path.is_file():
+            self.persister.load_model(self.model, self.cfg.paths.model_path, device=self.device)
+            if self.ema_model is not None:
+                self.ema_model.module.load_state_dict(self.model.state_dict())
+            self.logger.info(f"Loaded best model from {self.cfg.paths.model_path}")
+
     def train(self, start_epoch: int = 0):
         """Train the tamper segmentation model on the configured SID subsets."""
         prev_best = None
@@ -102,7 +135,8 @@ class Trainer:
         
         # PREPARE TRAIN AND VALIDATION LOADERS LIMITED TO TAMPERED SAMPLES THAT INCLUDE MASKS.
         train_loader, val_loader = self._load_data()
-        self._log_forward_shape_snapshot(train_loader)
+        if self.verbose:
+            self._log_forward_shape_snapshot(train_loader)
 
         try:
             steps_per_epoch = len(train_loader)
@@ -127,17 +161,20 @@ class Trainer:
                 avg_train_loss,
                 avg_train_dice,
                 steps_this_epoch,
-                avg_train_bce_weighted,
+                avg_train_primary_weighted,
                 avg_train_dice_weighted,
-                avg_train_bce_raw,
+                avg_train_primary_raw,
                 avg_train_dice_raw,
+                avg_grad_norm,
+                max_grad_norm,
+                grad_clip_fraction,
             ) = self._train_epoch(train_loader, epoch)
             (
                 avg_val_loss,
                 avg_val_dice,
-                avg_val_bce_weighted,
+                avg_val_primary_weighted,
                 avg_val_dice_weighted,
-                avg_val_bce_raw,
+                avg_val_primary_raw,
                 avg_val_dice_raw,
             ) = self._evaluation(val_loader)
             
@@ -156,50 +193,58 @@ class Trainer:
             current_lr = param_group_lrs.get("lr_group_0", max(float(self.optimizer.param_groups[0]["lr"]), 1e-12))
 
             # RECORD THE FULL SET OF TRAINING AND VALIDATION METRICS FOR THIS EPOCH.
+            additional_metrics = {
+                "train_dice": avg_train_dice,
+                "val_dice": avg_val_dice,
+                f"train_{self.primary_loss_name}_weighted": avg_train_primary_weighted,
+                "train_dice_weighted": avg_train_dice_weighted,
+                f"val_{self.primary_loss_name}_weighted": avg_val_primary_weighted,
+                "val_dice_weighted": avg_val_dice_weighted,
+                f"train_{self.primary_loss_name}_raw": avg_train_primary_raw,
+                "train_dice_raw": avg_train_dice_raw,
+                f"val_{self.primary_loss_name}_raw": avg_val_primary_raw,
+                "val_dice_raw": avg_val_dice_raw,
+                "grad_norm_avg": avg_grad_norm,
+                "grad_norm_max": max_grad_norm,
+                "grad_clip_frac": grad_clip_fraction,
+                **param_group_lrs,
+            }
+
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
                 step=base_step,
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 learning_rate=current_lr,
-                additional_metrics={
-                    "train_dice": avg_train_dice,
-                    "val_dice": avg_val_dice,
-                    "train_bce_weighted": avg_train_bce_weighted,
-                    "train_dice_weighted": avg_train_dice_weighted,
-                    "val_bce_weighted": avg_val_bce_weighted,
-                    "val_dice_weighted": avg_val_dice_weighted,
-                    "train_bce_raw": avg_train_bce_raw,
-                    "train_dice_raw": avg_train_dice_raw,
-                    "val_bce_raw": avg_val_bce_raw,
-                    "val_dice_raw": avg_val_dice_raw,
-                    **param_group_lrs,
-                }
+                additional_metrics=additional_metrics
             ))
             
             # LOG A FRIENDLY SUMMARY SO USERS CAN FOLLOW PROGRESS.
             self.logger.info(
                 f"Epoch {epoch+1}: "
                 f"train_loss={avg_train_loss:.4f}, train_dice={avg_train_dice:.4f}, "
-                f"train_bce_w={avg_train_bce_weighted:.4f}, train_dice_w={avg_train_dice_weighted:.4f}, "
+                f"train_{self.primary_loss_name}_w={avg_train_primary_weighted:.4f}, train_dice_w={avg_train_dice_weighted:.4f}, "
                 f"val_loss={avg_val_loss:.4f}, val_dice={avg_val_dice:.4f}, "
-                f"val_bce_w={avg_val_bce_weighted:.4f}, val_dice_w={avg_val_dice_weighted:.4f}"
+                f"val_{self.primary_loss_name}_w={avg_val_primary_weighted:.4f}, val_dice_w={avg_val_dice_weighted:.4f}, "
+                f"grad_avg={avg_grad_norm:.4f}, grad_max={max_grad_norm:.4f}, clip_frac={grad_clip_fraction:.1%}"
             )
             
             # SAVE THE MODEL WHEN IT ACHIEVES A BETTER VALIDATION DICE THAN ANY PRIOR EPOCH.
             if avg_val_dice > prev_best_val:
-                self.persister.save_model(self.model, self.cfg.paths.model_path)
+                self.persister.save_model(self._model_for_export(), self.cfg.paths.model_path)
                 self.logger.info(f"Saved best model at epoch {epoch+1} (dice={avg_val_dice:.4f})")
 
 
             # CREATE SCHEDULED CHECKPOINTS SO TRAINING CAN RECOVER AFTER INTERRUPTIONS.
             checkpoint_dir = self.checkpoint_mgr.create_checkpoint(
                 epoch=epoch + 1,
-                model=self.model,
+                model=self._model_for_export(),
                 optimizer=self.optimizer,
                 metrics_tracker=self.metrics_tracker,
                 config=self.cfg,
             )
+            if checkpoint_dir and self.ema_model is not None:
+                torch.save(self.ema_model.state_dict(), checkpoint_dir / "ema_state.pth")
 
         # AFTER TRAINING FINISHES, FINALISE AND SAVE METRICS FOR LATER ANALYSIS.
         self.metrics_tracker.end_training()
@@ -231,12 +276,20 @@ class Trainer:
         """RUN ONE FULL TRAINING EPOCH OVER THE SEGMENTATION DATA LOADER."""
         self.model.train()
         loss_sum, dice_sum, steps = 0.0, 0.0, 0
-        bce_weighted_sum, dice_weighted_sum = 0.0, 0.0
-        bce_raw_sum, dice_raw_sum = 0.0, 0.0
+        primary_weighted_sum, dice_weighted_sum = 0.0, 0.0
+        primary_raw_sum, dice_raw_sum = 0.0, 0.0
         total_elements = 0
+        grad_norm_sum = 0.0
+        grad_norm_max = 0.0
+        grad_clip_events = 0
+        clip_threshold = self.grad_clip_threshold
         
         # LOOP OVER BATCHES WITH A PROGRESS BAR FOR USER FEEDBACK.
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}")
+        pbar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch+1}/{self.cfg.training.epochs}",
+            disable=not self.verbose,
+        )
         for batch in pbar:
             # FETCH IMAGE AND MASK TENSORS FOR THIS MINI-BATCH.
             images = batch["image"].to(self.device)
@@ -248,29 +301,36 @@ class Trainer:
             # ENABLE MIXED PRECISION TO SPEED UP TRAINING AND REDUCE MEMORY FOOTPRINT.
             with autocast(device_type=self.device.type, enabled=self.amp_enabled):
                 logits = self.model(images)
-                bce_raw = self.bce_loss(logits, masks)
+                primary_raw = self.primary_loss_fn(logits, masks)
                 dice_raw = soft_dice_loss(logits, masks)
-                bce = self.bce_weight * bce_raw
-                dice = self.dice_weight * dice_raw
-                loss = bce + dice
+                primary_term = self.primary_weight * primary_raw
+                dice_term = self.dice_weight * dice_raw
+                loss = primary_term + dice_term
             
             # SCALE THE LOSS FOR MIXED PRECISION, BACKPROPAGATE, AND STEP THE OPTIMISER.
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
-            clip_norm = getattr(self.cfg.training, "grad_clip_norm", 0.0)
-            if clip_norm and clip_norm > 0:
-                clip_grad_norm_(self.model.parameters(), clip_norm)
+            if clip_threshold and clip_threshold > 0:
+                grad_norm = float(clip_grad_norm_(self.model.parameters(), clip_threshold))
+                if grad_norm > clip_threshold:
+                    grad_clip_events += 1
+            else:
+                grad_norm = self._compute_grad_norm(self.model.parameters())
+            grad_norm_sum += grad_norm
+            grad_norm_max = max(grad_norm_max, grad_norm)
             self.scaler.step(self.optimizer)
             self.scaler.update()
             if self.scheduler and self.scheduler_step_mode == "batch":
                 self.scheduler.step()
+            if self.ema_model is not None:
+                self.ema_model.update_parameters(self.model)
 
             # ACCUMULATE PER-BATCH LOSS CONTRIBUTIONS AND DICE OVER THE WHOLE DATASET.
             batch_elements = masks.numel()
             loss_sum += loss.item() * batch_elements
-            bce_weighted_sum += bce.item() * batch_elements
-            dice_weighted_sum += dice.item() * batch_elements
-            bce_raw_sum += bce_raw.item() * batch_elements
+            primary_weighted_sum += primary_term.item() * batch_elements
+            dice_weighted_sum += dice_term.item() * batch_elements
+            primary_raw_sum += primary_raw.item() * batch_elements
             dice_raw_sum += dice_raw.item() * batch_elements
             total_elements += batch_elements
             dice_sum += dice_coefficient(logits, masks).item()
@@ -278,29 +338,40 @@ class Trainer:
             steps += 1
             # SHOW CURRENT LOSS COMPONENTS ON THE PROGRESS BAR FOR QUICK MONITORING.
             avg_dice = dice_sum / max(steps, 1)
-            pbar.set_postfix({
-                'loss': f'{loss.item():.3f}',
-                'dice': f'{avg_dice:.3f}',
-                'bce_w': f'{bce.item():.3f}',
-                'dice_w': f'{dice.item():.3f}',
-            })
+            if self.verbose:
+                pbar.set_postfix({
+                    'loss': f'{loss.item():.3f}',
+                    'dice': f'{avg_dice:.3f}',
+                    f'{self.primary_loss_name}_w': f'{primary_term.item():.3f}',
+                    'dice_w': f'{dice_term.item():.3f}',
+                })
         
         # CALCULATE AVERAGE METRICS TO LOG AND SAVE FOR THIS EPOCH.
         avg_train_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_train_dice = dice_sum / max(steps, 1)
-        avg_train_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
+        avg_train_primary_weighted = primary_weighted_sum / total_elements if total_elements else float('nan')
         avg_train_dice_weighted = dice_weighted_sum / total_elements if total_elements else float('nan')
-        avg_train_bce_raw = bce_raw_sum / total_elements if total_elements else float('nan')
+        avg_train_primary_raw = primary_raw_sum / total_elements if total_elements else float('nan')
         avg_train_dice_raw = dice_raw_sum / total_elements if total_elements else float('nan')
-        
+        step_count = max(steps, 1)
+        avg_grad_norm = grad_norm_sum / step_count
+        grad_clip_fraction = grad_clip_events / step_count
+        if clip_threshold and clip_threshold > 0 and grad_clip_fraction > 0.3 and self.verbose:
+            self.logger.logger.warning(
+                f"Gradient clipping triggered on {grad_clip_fraction:.1%} of batches (threshold {clip_threshold})."
+            )
+
         return (
             avg_train_loss,
             avg_train_dice,
             steps,
-            avg_train_bce_weighted,
+            avg_train_primary_weighted,
             avg_train_dice_weighted,
-            avg_train_bce_raw,
+            avg_train_primary_raw,
             avg_train_dice_raw,
+            avg_grad_norm,
+            grad_norm_max,
+            grad_clip_fraction,
         )
 
     @torch.no_grad()  # DISABLE GRADIENTS DURING VALIDATION TO SAVE MEMORY AND TIME.
@@ -309,8 +380,8 @@ class Trainer:
         
         self.model.eval()
         loss_sum, dice_sum = 0.0, 0.0
-        bce_weighted_sum, dice_weighted_sum = 0.0, 0.0
-        bce_raw_sum, dice_raw_sum = 0.0, 0.0
+        primary_weighted_sum, dice_weighted_sum = 0.0, 0.0
+        primary_raw_sum, dice_raw_sum = 0.0, 0.0
         total_elements = 0
         steps = 0
         
@@ -322,18 +393,18 @@ class Trainer:
                 
                 # FORWARD PASS THROUGH SEGMENTATION MODEL
                 logits = self.model(images)
-                bce_raw = self.bce_loss(logits, masks)
+                primary_raw = self.primary_loss_fn(logits, masks)
                 dice_raw = soft_dice_loss(logits, masks)
-                bce = self.bce_weight * bce_raw
-                dice = self.dice_weight * dice_raw
-                loss = bce + dice
+                primary_term = self.primary_weight * primary_raw
+                dice_term = self.dice_weight * dice_raw
+                loss = primary_term + dice_term
                 
                 # ACCUMULATE LOSS AND DICE SCORE
                 batch_elements = masks.numel()
                 loss_sum += loss.item() * batch_elements
-                bce_weighted_sum += bce.item() * batch_elements
-                dice_weighted_sum += dice.item() * batch_elements
-                bce_raw_sum += bce_raw.item() * batch_elements
+                primary_weighted_sum += primary_term.item() * batch_elements
+                dice_weighted_sum += dice_term.item() * batch_elements
+                primary_raw_sum += primary_raw.item() * batch_elements
                 dice_raw_sum += dice_raw.item() * batch_elements
                 total_elements += batch_elements
                 dice_sum += dice_coefficient(logits, masks).item()
@@ -342,17 +413,17 @@ class Trainer:
         # COMPUTE AVERAGE VALIDATION METRICS SO WE CAN COMPARE EPOCHS FAIRLY.
         avg_val_loss = loss_sum / total_elements if total_elements else float('nan')
         avg_val_dice = dice_sum / max(steps, 1) if steps else float('nan')
-        avg_val_bce_weighted = bce_weighted_sum / total_elements if total_elements else float('nan')
+        avg_val_primary_weighted = primary_weighted_sum / total_elements if total_elements else float('nan')
         avg_val_dice_weighted = dice_weighted_sum / total_elements if total_elements else float('nan')
-        avg_val_bce_raw = bce_raw_sum / total_elements if total_elements else float('nan')
+        avg_val_primary_raw = primary_raw_sum / total_elements if total_elements else float('nan')
         avg_val_dice_raw = dice_raw_sum / total_elements if total_elements else float('nan')
-        
+
         return (
             avg_val_loss,
             avg_val_dice,
-            avg_val_bce_weighted,
+            avg_val_primary_weighted,
             avg_val_dice_weighted,
-            avg_val_bce_raw,
+            avg_val_primary_raw,
             avg_val_dice_raw,
         )
 
@@ -457,6 +528,28 @@ class Trainer:
         else:
             self.logger.debug("torchinfo not installed; skipping textual model summary.")
         self.model.train(was_training)
+
+    def _model_for_export(self) -> nn.Module:
+        """Return EMA weights when available so saved checkpoints are smoothed."""
+        return self.ema_model.module if self.ema_model is not None else self.model
+
+    def load_ema_state(self, ema_path: Path) -> None:
+        """Restore EMA weights from disk when resuming from a checkpoint."""
+        if self.ema_model is None or not ema_path.exists():
+            return
+        state_dict = torch.load(ema_path, map_location=self.device)
+        self.ema_model.load_state_dict(state_dict)
+        self.ema_model.to(self.device)
+
+    @staticmethod
+    def _compute_grad_norm(parameters) -> float:
+        total_sq = 0.0
+        for p in parameters:
+            if p.grad is None:
+                continue
+            param_norm = p.grad.data.float().norm(2)
+            total_sq += float(param_norm.item() ** 2)
+        return math.sqrt(total_sq) if total_sq > 0 else 0.0
 
     def _log_forward_shape_snapshot(self, loader: DataLoader) -> None:
         """Log tensor shapes through the backbone and decoder for a single batch."""
