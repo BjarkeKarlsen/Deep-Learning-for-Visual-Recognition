@@ -39,84 +39,93 @@ class ClassificationPlots(CommonPlots):
         save_path: Optional[Union[str, Path]] = None,
         include_additional_metrics: bool = True
     ) -> None:
-        """Plot loss, accuracy, and up to 4 additional metrics using self.history."""
+        """Plot loss, accuracy, gradients, and learning rate trends."""
         if self.history is None:
             print("No training history loaded. Cannot plot training curves.")
             return
-            
+
         curves = self.history
-        if not curves.get('train_loss'):
+        if not curves.get("train_loss"):
             print("No training loss data found in history.")
             return
-            
-        additional = curves.get('_metadata', {}).get('additional_metric_names', [])
-        num_plots = 2 + (min(len(additional), 4) if include_additional_metrics else 0)
 
-        # Create subplots
-        if num_plots <= 2:
-            fig, axes = plt.subplots(1, num_plots, figsize=(7 * num_plots, 6))
-            axes = [axes] if num_plots == 1 else list(axes)
+        fallback_epochs = list(curves.get("train_loss_epochs") or curves.get("epochs", []))
+        if not fallback_epochs:
+            fallback_epochs = list(range(1, len(curves["train_loss"]) + 1))
+
+        fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+        fig.subplots_adjust(hspace=0.32, wspace=0.28)
+        ax_loss, ax_acc, ax_grad, ax_lr = axes.flatten()
+
+        # ---- Loss panel -----------------------------------------------------
+        train_loss_epochs, train_loss = self.extract_series(curves, "train_loss", fallback_epochs)
+        val_loss_epochs, val_loss = self.extract_series(curves, "val_loss", fallback_epochs)
+        if train_loss is not None:
+            ax_loss.plot(train_loss_epochs, train_loss, color=self.palette[0], linewidth=2.2, label="Train")
+        if val_loss is not None and np.isfinite(val_loss).any():
+            ax_loss.plot(val_loss_epochs, val_loss, color=self.palette[3], linewidth=2.0, linestyle="--", label="Val")
+            best_idx = int(np.nanargmin(val_loss))
+            ax_loss.scatter(val_loss_epochs[best_idx], val_loss[best_idx], color=self.palette[3], edgecolors="white", s=60, zorder=5)
+        self._style_axis(ax_loss, title="Cross-Entropy Loss", xlabel="Epoch", ylabel="Loss", grid=False, facecolor='white')
+        if ax_loss.has_data():
+            ax_loss.legend(frameon=False)
+
+        # ---- Accuracy panel -------------------------------------------------
+        train_acc_epochs, train_acc = self.extract_series(curves, "train_acc", fallback_epochs)
+        val_acc_epochs, val_acc = self.extract_series(curves, "val_acc", fallback_epochs)
+        if train_acc is not None or val_acc is not None:
+            if train_acc is not None:
+                ax_acc.plot(train_acc_epochs, train_acc, color=self.palette[1], linewidth=2.2, label="Train")
+            if val_acc is not None:
+                ax_acc.plot(val_acc_epochs, val_acc, color=self.palette[2], linewidth=2.0, linestyle="--", label="Val")
+            ax_acc.set_ylim(0, 1.02)
+            self._style_axis(ax_acc, title="Accuracy", xlabel="Epoch", ylabel="Accuracy", grid=False, facecolor='white')
+            ax_acc.legend(frameon=False)
         else:
-            rows = (num_plots + 1) // 2
-            fig, axes = plt.subplots(rows, 2, figsize=(14, 6 * rows))
-            axes = axes.flatten()
+            ax_acc.axis("off")
 
-        epochs = range(1, len(curves['train_loss']) + 1)
-        idx = 0
+        # ---- Gradient panel -------------------------------------------------
+        grad_epochs, grad_avg = self.extract_series(curves, "grad_norm_avg", fallback_epochs)
+        _, grad_max = self.extract_series(curves, "grad_norm_max", fallback_epochs)
+        clip_epochs, grad_clip = self.extract_series(curves, "grad_clip_frac", fallback_epochs)
 
-        # Loss plot
-        axes[idx].plot(epochs, curves['train_loss'], 'b-o', label='Train Loss')
-        if curves.get('val_loss'):
-            axes[idx].plot(epochs, curves['val_loss'], 'r-s', label='Val Loss')
-        axes[idx].set_title("Loss")
-        axes[idx].set_xlabel("Epoch")
-        axes[idx].set_ylabel("Loss")
-        axes[idx].legend()
-        axes[idx].grid(alpha=0.3)
-        idx += 1
+        if grad_avg is not None or grad_max is not None or grad_clip is not None:
+            if grad_avg is not None:
+                ax_grad.plot(grad_epochs, grad_avg, color=self.palette[4], linewidth=2.0, label="Grad norm (avg)")
+            if grad_max is not None:
+                ax_grad.plot(grad_epochs, grad_max, color=self.palette[5], linewidth=1.8, linestyle="--", label="Grad norm (max)")
+            if grad_clip is not None:
+                clip_percent = grad_clip * 100.0
+                ax_clip = ax_grad.twinx()
+                ax_clip.bar(clip_epochs, clip_percent, width=0.4, alpha=0.25, color=self.palette[6])
+                ax_clip.set_ylabel("Clip %", color=self.palette[6])
+                ax_clip.set_ylim(0, max(clip_percent) * 1.2 if clip_percent.size else 1)
+                ax_clip.tick_params(axis='y', labelcolor=self.palette[6])
+            self._style_axis(ax_grad, title="Gradient behaviour", xlabel="Epoch", ylabel="Norm", grid=False, facecolor='white')
+            ax_grad.legend(frameon=False, loc="upper right")
+        else:
+            ax_grad.axis("off")
 
-        # Accuracy plot
-        if curves.get('train_acc') and curves.get('val_acc'):
-            tacc = curves['train_acc']
-            if tacc and max(tacc) > 2.0:
-                tacc = [v / 100.0 for v in tacc]
-            axes[idx].plot(epochs, tacc, 'g-o', label='Train Acc')
-
-            vacc = curves['val_acc']
-            if vacc and max(vacc) > 2.0:
-                vacc = [v / 100.0 for v in vacc]
-            axes[idx].plot(epochs, vacc, 'm-s', label='Val Acc')
-
-            axes[idx].set_title("Accuracy")
-            axes[idx].set_xlabel("Epoch")
-            axes[idx].set_ylabel("Accuracy")
-            axes[idx].set_ylim(0, 1)
-            axes[idx].legend()
-            axes[idx].grid(alpha=0.3)
-            idx += 1
-
-        # Additional metrics
-        colors = ['orange', 'purple', 'brown', 'pink']
-        for i, name in enumerate(additional[:4]):
-            if idx >= len(axes):
-                break
-            vals = curves.get(name, [])
-            if not vals:
-                continue
-            ax = axes[idx]
-            ax.plot(epochs, vals, color=colors[i], marker='o', label=name.replace('_', ' ').title())
-            ax.set_title(name.replace('_', ' ').title())
-            ax.set_xlabel("Epoch")
-            ax.set_ylabel(name)
-            if any(k in name for k in ['acc', 'f1', 'precision', 'recall']):
-                ax.set_ylim(0, 1)
-            ax.legend()
-            ax.grid(alpha=0.3)
-            idx += 1
-
-        # Hide unused subplots
-        for j in range(idx, len(axes)):
-            axes[j].set_visible(False)
+        # ---- Learning rate panel -------------------------------------------
+        lr_epochs, lr_vals = self.extract_series(curves, "learning_rate", fallback_epochs)
+        plotted_values = []
+        if lr_vals is not None and np.all(lr_vals > 0):
+            ax_lr.plot(lr_epochs, lr_vals, color=self.palette[7], linewidth=2.0, label="Base")
+            plotted_values.append(lr_vals)
+        for key in sorted(k for k in curves.keys() if k.startswith("lr_group_") and not k.endswith("_epochs")):
+            group_epochs, group_vals = self.extract_series(curves, key, fallback_epochs)
+            if group_vals is not None and np.all(group_vals > 0):
+                label = key.replace("_", " ").title()
+                ax_lr.plot(group_epochs, group_vals, linewidth=1.6, linestyle="--", label=label)
+                plotted_values.append(group_vals)
+        if plotted_values:
+            min_lr = min(float(np.nanmin(vals)) for vals in plotted_values if np.all(vals > 0))
+            if min_lr > 0:
+                ax_lr.set_yscale('log')
+            self._style_axis(ax_lr, title="Learning rate", xlabel="Epoch", ylabel="LR", grid=False, facecolor='white')
+            ax_lr.legend(frameon=False)
+        else:
+            ax_lr.axis("off")
 
         plt.tight_layout()
         self.save_plot(fig, filename=filename or "classification_curves.png", save_path=save_path)

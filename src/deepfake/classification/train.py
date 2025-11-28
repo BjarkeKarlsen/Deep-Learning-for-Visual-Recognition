@@ -1,7 +1,7 @@
 import os
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Dict
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets import DownloadMode
@@ -26,36 +26,40 @@ from deepfake.utils.augmentation_factory import build_classification_transform
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.utils.checkpoint_manager import CheckpointManager
-from .model import BaselineClassifier
+from .model import build_classification_model
 
 
 class Trainer:
-    # MANAGES CLASSIFICATION TRAINING, CHECKPOINTS, AND LOGGING FOR ONE RUN.
+    # ORCHESTRATES THE ENTIRE CLASSIFICATION TRAINING LOOP, INCLUDING DATA, OPTIMISERS, LOGGING, AND CHECKPOINTS.
     def __init__(
         self,
         cfg: Config,
         logger: SidLogger,
         metrics_tracker: TrainingMetricsTracker,
         checkpoint_mgr: CheckpointManager,
-        persister: IModelPersister = None
+        persister: IModelPersister = None,
+        verbose: bool = True,
     ):
         self.cfg = cfg
         self.device = torch.device(cfg.training.device)
-        # SHARED UTILITIES TRACK LOGS, METRIC HISTORY, AND CHECKPOINT SNAPSHOTS.
+        self.verbose = verbose
+        # SHARED UTILITIES TRACK LOGS, METRICS, AND CHECKPOINTS SO RUNS CAN BE RESTARTED SAFELY.
         self.logger = logger
         self.metrics_tracker = metrics_tracker
         self.checkpoint_mgr = checkpoint_mgr
         self.persister = persister or TorchModelPersister()
         
         
-        # CORE OPTIMISATION COMPONENTS FOR THE CLASSIFIER.
-        self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
+        # CORE TRAINING OBJECTS: MODEL, OPTIMISER, LOSS, MIXED PRECISION, SCHEDULER, AND OPTIONAL EMA.
+        self.model = build_classification_model(cfg.model).to(self.device)
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=getattr(cfg.training, "label_smoothing", 0.0))
         self.amp_enabled = self.device.type == "cuda" and torch.cuda.is_available()
         self.scaler = GradScaler(enabled=self.amp_enabled)
         self.scheduler = None
         self.scheduler_step_mode = "epoch"
+        self.grad_clip_threshold = getattr(cfg.training, "grad_clip_norm", 0.0)
+        self._last_grad_stats: Optional[Dict[str, float]] = None
         self.ema_model = None
 
         if cfg.training.ema_decay > 0:
@@ -66,7 +70,7 @@ class Trainer:
             )
             self.ema_model.to(self.device)
 
-        # WARM-START FROM A PREVIOUSLY SAVED BEST MODEL WHEN AVAILABLE.
+        # IF A PREVIOUS BEST MODEL EXISTS, LOAD IT TO CONTINUE TRAINING INSTEAD OF STARTING FROM SCRATCH.
         if os.path.isfile(cfg.paths.model_path):
             self.persister.load_model(self.model, cfg.paths.model_path, device=self.device)
             self.logger.info(f"Loaded best model from {cfg.paths.model_path}")       
@@ -78,14 +82,14 @@ class Trainer:
         prev_best = None
         prev_best_val = float('-inf')
         
-        # MATERIALISE TRAIN AND VALIDATION LOADERS BASED ON THE CONFIG.
+        # BUILD TRAINING AND VALIDATION LOADERS USING THE CONFIGURED DATA SETTINGS.
         train_loader, val_loader = self._load_data(self.cfg)
 
         try:
             steps_per_epoch = len(train_loader)
         except (TypeError, AttributeError):
             steps_per_epoch = 0
-        # Build scheduler (if configured) now that we know steps/epoch
+        # SCHEDULER NEEDS THE NUMBER OF BATCHES PER EPOCH, SO BUILD IT AFTER DATA LOADERS ARE READY.
         self.scheduler, self.scheduler_step_mode = SchedulerFactory.create(
             self.optimizer,
             self.cfg.training,
@@ -94,11 +98,11 @@ class Trainer:
         if self.scheduler and self.scheduler_step_mode == "epoch" and start_epoch > 0:
             self.scheduler.last_epoch = start_epoch - 1
 
-        # START METRIC TRACKING SO TIMINGS AND HISTORY ARE RECORDED.
+        # START METRIC TRACKING TO RECORD EACH EPOCH AND SUPPORT RESUME-ON-RESTART.
         self.metrics_tracker.start_training()
         base_step = self.metrics_tracker.metrics[-1].step if self.metrics_tracker.metrics else 0
 
-        # MAIN EPOCH LOOP: TRAIN, EVALUATE, LOG, AND SAVE CHECKPOINTS.
+        # MAIN TRAINING LOOP: RUN ONE EPOCH, EVALUATE IT, LOG RESULTS, AND MANAGE CHECKPOINTS.
         for epoch in range(start_epoch, self.cfg.training.epochs):
             train_acc, avg_train_loss, batch_count = self._train_epoch(train_loader, epoch)
             eval_model = self.ema_model.module if self.ema_model is not None else self.model
@@ -114,6 +118,11 @@ class Trainer:
             current_lr = max(float(self.optimizer.param_groups[0]['lr']), 1e-12)
 
             # UPDATE METRIC HISTORY WITH THE LATEST SNAPSHOT.
+            additional_metrics: Dict[str, float] = {}
+            grad_stats = getattr(self, "_last_grad_stats", None)
+            if grad_stats:
+                additional_metrics.update(grad_stats)
+
             self.metrics_tracker.add_metrics(TrainingMetrics(
                 epoch=epoch + 1,
                 step=base_step,
@@ -122,6 +131,7 @@ class Trainer:
                 train_acc=train_acc,
                 val_acc=val_acc,
                 learning_rate=current_lr,
+                additional_metrics=additional_metrics,
             ))
 
             train_acc_display = (
@@ -137,6 +147,14 @@ class Trainer:
                 lr=current_lr,
             )
 
+            if grad_stats and self.verbose:
+                self.logger.logger.info(
+                    "Gradients -> avg %.3f | max %.3f | clip_frac %.1f%%",
+                    grad_stats["grad_norm_avg"],
+                    grad_stats["grad_norm_max"],
+                    grad_stats["grad_clip_frac"] * 100.0,
+                )
+
             if val_acc is not None and not math.isnan(val_acc) and val_acc > prev_best_val:
                 self.persister.save_model(self._model_for_export(), self.cfg.paths.model_path)
                 self.logger.info(f"Saved best model at epoch {epoch + 1} (val_acc={val_acc:.4f})")
@@ -151,7 +169,7 @@ class Trainer:
             if checkpoint_dir and self.ema_model is not None:
                 torch.save(self.ema_model.state_dict(), checkpoint_dir / "ema_state.pth")
 
-        # FINALISE METRIC STORAGE AFTER THE LOOP COMPLETES.
+        # AFTER FINISHING ALL EPOCHS, WRITE METRICS TO DISK SO THE RUN CAN BE ANALYSED LATER.
         self.metrics_tracker.end_training()
         self.metrics_tracker.save_to_json(self.cfg.paths.history_path)
 
@@ -168,7 +186,7 @@ class Trainer:
             best_epoch=best_epoch,
         )
 
-        # RENDER QUICKLOOK PLOTS FOR LOSS, ACCURACY, AND LR.
+        # AUTO-GENERATE TRAINING PLOTS SO USERS CAN INSPECT CURVES WITHOUT EXTRA STEPS.
         plotter = ClassificationPlots(output_directory=self.cfg.paths.run_root, training_history_path=self.cfg.paths.history_path)
         plotter.plot_training_history()
         plotter.plot_learning_rate_schedule()
@@ -181,11 +199,19 @@ class Trainer:
         train_correct = 0
         train_total = 0
         batch_count = 0
+        grad_norm_sum = 0.0
+        grad_norm_max = 0.0
+        grad_clip_events = 0
+        clip_threshold = self.grad_clip_threshold
 
-        # PROGRESS BAR SHOWS MINI-BATCH STATUS FOR THE CURRENT EPOCH.
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}")
+        # PROGRESS BAR PROVIDES FRIENDLY FEEDBACK DURING EACH EPOCH.
+        pbar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1}/{self.cfg.training.epochs}",
+            disable=not self.verbose,
+        )
         for batch in pbar:
-            # FORWARD AND BACKWARD PASS FOR A SINGLE MINI-BATCH.
+            # PROCESS ONE MINI-BATCH: FORWARD PASS, LOSS, BACKWARD PASS, AND OPTIMISER STEP.
             images = batch["image"].to(self.device)
             labels = batch["label"].to(self.device)
             batch_count += 1
@@ -198,9 +224,14 @@ class Trainer:
 
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
-            clip_norm = getattr(self.cfg.training, "grad_clip_norm", 0.0)
-            if clip_norm and clip_norm > 0:
-                clip_grad_norm_(self.model.parameters(), clip_norm)
+            if clip_threshold and clip_threshold > 0:
+                grad_norm = float(clip_grad_norm_(self.model.parameters(), clip_threshold))
+                if grad_norm > clip_threshold:
+                    grad_clip_events += 1
+            else:
+                grad_norm = self._compute_grad_norm(self.model.parameters())
+            grad_norm_sum += grad_norm
+            grad_norm_max = max(grad_norm_max, grad_norm)
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
@@ -215,41 +246,65 @@ class Trainer:
             train_total += batch_size
             train_correct += (predicted == labels).sum().item()
 
-            pbar.set_postfix({'loss': f'{loss.item():.3f}'})
+            if self.verbose:
+                pbar.set_postfix({'loss': f'{loss.item():.3f}'})
 
         train_acc = train_correct / train_total if train_total else None
         avg_train_loss = train_loss / train_total if train_total else float('nan')
 
+        steps = max(batch_count, 1)
+        avg_grad_norm = grad_norm_sum / steps
+        clip_fraction = grad_clip_events / steps
+        self._last_grad_stats = {
+            "grad_norm_avg": avg_grad_norm,
+            "grad_norm_max": grad_norm_max,
+            "grad_clip_frac": clip_fraction,
+        }
+        if clip_threshold and clip_threshold > 0 and clip_fraction > 0.3 and self.verbose:
+            self.logger.logger.warning(
+                f"Gradient clipping triggered on {clip_fraction:.1%} of batches (threshold {clip_threshold})."
+            )
+
         return train_acc, avg_train_loss, batch_count
+
+    @staticmethod
+    def _compute_grad_norm(parameters) -> float:
+        total_sq = 0.0
+        for p in parameters:
+            if p.grad is None:
+                continue
+            param_norm = p.grad.data.float().norm(2)
+            total_sq += float(param_norm.item() ** 2)
+        return math.sqrt(total_sq) if total_sq > 0 else 0.0
     
-    @torch.no_grad() # Optimize memory usage and speed up computations
+    @torch.no_grad()  # DISABLE GRADIENTS DURING VALIDATION TO SAVE MEMORY AND SPEED UP EXECUTION.
     def _evaluation(self, val_loader: DataLoader, model: Optional[nn.Module] = None):
         """Evaluate model (EMA if provided) without gradient tracking."""
-        # RUN A FULL VALIDATION SWEEP TO MEASURE GENERALISATION.
+        # RUN A FULL VALIDATION SWEEP TO ESTIMATE HOW WELL THE MODEL GENERALISES.
         eval_model = model if model is not None else self.model
         eval_model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
 
         with torch.no_grad():
             for batch in val_loader:
-                # COLLECT VALIDATION LOSS AND ACCURACY FOR THIS MINI-BATCH.
+                # COMPUTE VALIDATION LOSS AND ACCURACY ON THIS BATCH.
                 images = batch["image"].to(self.device)
                 labels = batch["label"].to(self.device)
                 
-                # FORWARD PASS THROUGH CLASSIFICATION MODEL
+                # FORWARD PASS THROUGH THE CLASSIFIER.
                 outputs = eval_model(images)
                 loss = self.criterion(outputs, labels)
                 
-                # ACCUMULATE LOSS
+                # ACCUMULATE BATCH LOSS SO WE CAN REPORT AN AVERAGE.
                 batch_size = labels.size(0)
                 val_loss += loss.item() * batch_size
                 
-                # COUNT TOTAL SAMPLES AND CORRECT PREDICTIONS
+                # COUNT HOW MANY PREDICTIONS WERE CORRECT IN THIS BATCH.
                 _, predicted = torch.max(outputs, 1)
                 val_total += batch_size
                 val_correct += (predicted == labels).sum().item()
 
-        # CALCULATE ACCURACY AND AVERAGE LOSS WITH SAFE DIVISION
+        # RETURN ACCURACY AND LOSS, USING SAFE DIVISION TO AVOID ZERO-DIVISION ERRORS.
         val_acc = val_correct / val_total if val_total > 0 else None
         avg_val_loss = (val_loss / val_total if val_total > 0 else float('nan'))
 
@@ -258,7 +313,7 @@ class Trainer:
     
         
     def _save_augmentation_preview(self, dataset, transform):
-        """Optionally save a grid of augmented training samples."""
+        """OPTIONALLY SAVE A GRID OF AUGMENTED TRAINING SAMPLES FOR VISUAL INSPECTION."""
         augment_cfg = getattr(self.cfg.data, 'augment', None)
         if not augment_cfg or not getattr(augment_cfg, 'enable', False):
             return
@@ -267,7 +322,7 @@ class Trainer:
         if preview_samples <= 0:
             return
 
-        # RANDOMLY SAMPLE EXAMPLES TO VISUALISE AUGMENTED OUTPUTS.
+        # DRAW RANDOM EXAMPLES SO USERS CAN SEE HOW THE AUGMENTATIONS CHANGE IMAGES.
         try:
             dataset_length = len(dataset)
         except TypeError:
@@ -290,7 +345,7 @@ class Trainer:
                 self.logger.warning(f'Failed to fetch sample {idx} for augmentation preview: {exc}')
                 continue
 
-            # APPLY THE SAME AUGMENTATION PIPELINE USED DURING TRAINING.
+            # APPLY THE SAME AUGMENTATION PIPELINE USED DURING TRAINING FOR A TRUE PREVIEW.
             raw_image = SIDClassificationDataset.to_rgb(example['image'])
             augmented = transform(raw_image)
             augmented_images.append(augmented)
@@ -312,12 +367,12 @@ class Trainer:
         self.logger.info(f'Saved augmentation preview with {len(denorm)} samples to {preview_path}')
 
     def _model_for_export(self) -> nn.Module:
-        """Prefer the EMA weights when exporting/saving."""
-        # GIVE PRIORITY TO EMA WEIGHTS WHEN THEY ARE AVAILABLE.
+        """RETURN EMA WEIGHTS WHEN AVAILABLE SO SAVED MODELS ARE MORE STABLE."""
+        # EMA TYPICALLY IMPROVES EVALUATION PERFORMANCE, SO EXPORT IT WHEN PRESENT.
         return self.ema_model.module if self.ema_model is not None else self.model
 
     def load_ema_state(self, ema_path: Path) -> None:
-        """Restore EMA weights from disk if present."""
+        """RESTORE EMA WEIGHTS FROM DISK IF THEY WERE PREVIOUSLY SAVED."""
         if self.ema_model is None or not ema_path.exists():
             return
         state_dict = torch.load(ema_path, map_location=self.device)
@@ -325,7 +380,7 @@ class Trainer:
         self.ema_model.to(self.device)
 
     def _load_data(self, cfg: Config):
-        """Materialise train/val datasets and wrap them in DataLoaders."""
+        """BUILD TRAIN AND VALIDATION DATASETS AND WRAP THEM IN PYTORCH DATALOADERS."""
         self.manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -380,7 +435,7 @@ class Trainer:
                 max_samples=cfg.data.train_samples,
                 return_label=True,
             ),
-            shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False, # In short, “use your configured shuffle setting when not streaming; disable DataLoader-level shuffling when streaming.”
+            shuffle=cfg.loader.shuffle_train if not cfg.data.use_streaming else False,  # WHEN STREAMING, SHUFFLING HAPPENS UPSTREAM, SO DISABLE DATALOADER SHUFFLE.
             **loader_common_kwargs,
         )
 

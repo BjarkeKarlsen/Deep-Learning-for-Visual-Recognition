@@ -1,4 +1,16 @@
+from __future__ import annotations
+
 import torch.nn as nn
+from torchvision.models import (
+    resnet18,
+    resnet34,
+    resnet50,
+    ResNet18_Weights,
+    ResNet34_Weights,
+    ResNet50_Weights,
+)
+
+from deepfake.config.schema import ModelConfig
 
 
 def _conv_block(in_channels: int, out_channels: int) -> nn.Sequential:
@@ -52,3 +64,67 @@ class BaselineClassifier(nn.Module):
 
         logits = self.classifier(x)
         return logits
+
+
+def _set_resnet_trainable_layers(model: nn.Module, trainable_layers: int) -> None:
+    """Freeze all layers then unfreeze the requested number of deepest stages."""
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Always keep the classification head trainable.
+    for param in model.fc.parameters():
+        param.requires_grad = True
+
+    stages = [
+        model.layer4,
+        model.layer3,
+        model.layer2,
+        model.layer1,
+        nn.Sequential(model.conv1, model.bn1),
+    ]
+    trainable_layers = max(0, min(trainable_layers, len(stages)))
+    for stage in stages[:trainable_layers]:
+        for param in stage.parameters():
+            param.requires_grad = True
+
+
+def _build_resnet_classifier(name: str, num_classes: int, pretrained: bool, trainable_layers: int) -> nn.Module:
+    """Instantiate a torchvision ResNet backbone with a custom classification head."""
+
+    name = name.lower()
+    if name == "resnet50":
+        weights = ResNet50_Weights.DEFAULT if pretrained else None
+        model = resnet50(weights=weights)
+    elif name == "resnet34":
+        weights = ResNet34_Weights.DEFAULT if pretrained else None
+        model = resnet34(weights=weights)
+    elif name == "resnet18":
+        weights = ResNet18_Weights.DEFAULT if pretrained else None
+        model = resnet18(weights=weights)
+    else:
+        raise ValueError(
+            f"Unsupported ResNet backbone '{name}'. Choose from: resnet18, resnet34, resnet50."
+        )
+
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, num_classes)
+    _set_resnet_trainable_layers(model, trainable_layers)
+    return model
+
+
+def build_classification_model(model_cfg: ModelConfig) -> nn.Module:
+    """Return the configured classifier architecture (custom CNN or ResNet)."""
+
+    backbone_cfg = getattr(model_cfg, "backbone", None)
+    backbone_name = getattr(backbone_cfg, "name", "custom").lower() if backbone_cfg else "custom"
+
+    if backbone_name == "custom":
+        return BaselineClassifier(num_classes=model_cfg.num_classes, base_width=model_cfg.base_width)
+
+    return _build_resnet_classifier(
+        name=backbone_name,
+        num_classes=model_cfg.num_classes,
+        pretrained=getattr(backbone_cfg, "pretrained", False),
+        trainable_layers=getattr(backbone_cfg, "trainable_layers", 0),
+    )

@@ -1,6 +1,6 @@
 data:
   dataset_name: saberzl/SID_Set
-  image_size: 224
+  image_size: 256
   train_samples: 100000
   val_samples: 5000
   test_samples: 5000
@@ -46,6 +46,34 @@ model:
     - 0.229
     - 0.224
     - 0.225
+  base_width: 16
+  backbone:
+    name: custom
+    pretrained: false
+    trainable_layers: 4
+
+evaluation:
+  report_background: false
+  background_samples: 0
+  thresholds:
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+  bucket_edges:
+    - 0.1
+    - 0.25
+    - 0.5
+    - 1.0
+    - 2.0
+    - 5.0
+    - 10.0
+  analysis_examples: 6
 
 training:
   epochs: 100

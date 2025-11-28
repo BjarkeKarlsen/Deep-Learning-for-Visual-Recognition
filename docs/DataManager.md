@@ -1,68 +1,109 @@
 # DATAMANAGER.md
 
-## SIDDatasetManager
+## `SIDDatasetManager`
 
-`SIDDatasetManager` centralises loading, splitting, optional streaming, and
-custom caching for the Hugging Face `saberzl/SID_Set` dataset. The manager is
-shared by both the classification and segmentation pipelines.
+`SIDDatasetManager` is a thin wrapper around `datasets.load_dataset` that
+standardises how the toolkit materialises train/validation/test splits from the
+[`saberzl/SID_Set`](https://huggingface.co/datasets/saberzl/SID_Set) dataset.
+Both the classification and segmentation pipelines build their dataloaders on
+top of it.
 
-### Key Features
+### What It Does Today
 
-- **Hugging Face Cache Awareness** – honours `HF_DATASETS_CACHE` and `HF_HOME`
-  before falling back to `~/.cache/huggingface/datasets`.
-- **Custom Split Caching** – derived subsets are stored under
-  `~/.cache/huggingface/datasets/custom_splits/SID/<split>/` when
-  `use_disk_cache=True`.
-- **Streaming Support (temporarily degraded)** – setting `use_streaming=True` currently emits a warning and falls back to map-style datasets until Hugging Face fixes the streaming shutdown bug.
-- **Segmentation Filtering** – `get_segmentation_splits` filters to samples that
-  include masks and whose label matches `tampered_label` from the config.
+- Loads individual splits through `get_split(...)`.
+- Optionally materialises streaming splits into an in-memory Hugging Face
+  `Dataset` when `use_streaming=True`.
+- Applies simple filtering callbacks (e.g. `DatasetFilters.tampered_with_masks`)
+  before slicing down to the requested sample count.
+- Derives test splits from validation/train when the dataset does not expose a
+  dedicated `test` split.
 
-### Usage
+⚠️ **No custom caching**: earlier iterations wrote derived splits into a custom
+cache directory. That behaviour has been removed, and the current manager does
+not consult `data.use_disk_cache`.
 
-Ensure the package is installed (e.g. `pip install -e .`) or that `PYTHONPATH` includes the repository's `src/` directory before importing from `deepfake`.
+⚠️ **No multi-split helper**: `get_splits` / `get_segmentation_splits` no longer
+exist. The pipelines call `get_split` separately for each split they need.
+
+### Constructor
 
 ```python
-from deepfake.data import SIDDatasetManager
+def __init__(
+    self,
+    dataset_name: str,
+    use_streaming: bool = False,
+    cache_dir: Optional[str] = None,
+    download_mode: DownloadMode = DownloadMode.REUSE_CACHE_IF_EXISTS,
+)
+```
+
+- `dataset_name`: Hugging Face dataset identifier (defaults to
+  `"saberzl/SID_Set"` in the config).
+- `use_streaming`: whether to use HF's streaming mode. When `True`,
+  `get_split(..., max_samples=N)` must supply `max_samples` so the generator can
+  be buffered into memory.
+- `cache_dir`: optional Hugging Face cache override.
+- `download_mode`: forwarded directly to `datasets.load_dataset`.
+
+### `get_split(...)`
+
+```python
+manager.get_split(
+    split_type="train",           # "train" | "validation" | "test"
+    max_samples=10,               # Optional cap (required for streaming)
+    use_test_or_val_as_test_set=False,
+    val_offset=0,
+    train_offset=0,
+    filter_fn=DatasetFilters.classification_only,
+)
+```
+
+Key points:
+
+- When `split_type="test"` and the dataset lacks a formal test split, set
+  `use_test_or_val_as_test_set=True` to derive a hold-out window from the end of
+  the validation or training split (controlled via `val_offset` /
+  `train_offset`).
+- `filter_fn` receives individual HF examples and should return `True` to keep
+  them. The segmentation pipeline uses
+  `DatasetFilters.tampered_with_masks` to drop samples without masks.
+- When `use_streaming=True`, the manager buffers `max_samples * 4` examples
+  before filtering to improve the odds of collecting enough filtered records.
+  If fewer than `max_samples` survive the filter the manager logs a warning and
+  returns the smaller slice.
+
+### Example Usage
+
+```python
+from datasets import DownloadMode
+from deepfake.data.dataset_manager import SIDDatasetManager, DatasetFilters, TRAIN, VALIDATION
 
 manager = SIDDatasetManager(
     dataset_name="saberzl/SID_Set",
     use_streaming=False,
-    use_disk_cache=True,
+    download_mode=DownloadMode.REUSE_CACHE_IF_EXISTS,
 )
 
-train_ds, val_ds, test_ds = manager.get_splits(
-    train_max=1000,
-    val_max=200,
-    test_max=200,
+train_ds = manager.get_split(
+    split_type=TRAIN,
+    max_samples=100,
 )
-
-train_tampered, val_tampered, test_tampered = manager.get_segmentation_splits(
-    tampered_label=2,
-    train_max=400,
-    val_max=80,
-    test_max=80,
+val_ds = manager.get_split(
+    split_type=VALIDATION,
+    max_samples=40,
+)
+seg_train = manager.get_split(
+    split_type=TRAIN,
+    max_samples=200,
+    filter_fn=DatasetFilters.tampered_with_masks,
 )
 ```
 
-### Methods
-
-- `load_dataset()` – fetches the dataset via `datasets.load_dataset`, respecting
-  streaming settings and caching the base splits for reuse.
-- `get_splits(train_max, val_max, test_max, use_official_test=False,
-  val_offset=30000, test_offset=0)` – returns `(train, val, test)` subsets. When
-  the dataset lacks a validation split the manager derives one from the end of
-  the training split and handles streaming iterables transparently.
-- `get_segmentation_splits(**kwargs)` – wraps `get_splits` and filters to
-  tampered samples that provide masks. Useful for the U-Net pipeline.
-- `get_cache_info()` – reports the active Hugging Face cache directory, custom
-  split cache location, and any relevant environment variables.
-- `clear_custom_cache()` – deletes only the custom split cache, preserving the
-  original Hugging Face dataset downloads.
-
 ### Streaming Notes
 
-- For iterative splits, requesting `train_max`, `val_max`, or `test_max` limits
-  the number of records materialised in memory.
-- Some downstream PyTorch utilities expect random-access datasets. The provided
-  pipelines wrap streaming splits in `Dataset.from_list` to restore indexing
-  semantics after the requested samples are buffered.
+- Set `data.use_streaming: true` in your YAML config to switch the pipelines
+  into streaming mode. You **must** keep `data.train_samples`,
+  `data.val_samples`, and `data.test_samples` finite; otherwise `Dataset.take`
+  cannot materialise the stream.
+- The manager converts the buffered generator into a regular HF `Dataset`
+  instance so downstream PyTorch `DataLoader`s retain random-access semantics.

@@ -88,8 +88,7 @@ def run_train(cfg: Config, args):
         keep_checkpoints=cfg.training.keep_checkpoints,
     )
 
-    # determine start_epoch
-    # HANDLE CHECKPOINT RESUME WHEN REQUESTED BY THE USER.
+    # DETERMINE WHERE TO START TRAINING FROM, INCLUDING OPTIONAL CHECKPOINT RESUME.
     start_epoch = 0
     resume_epoch = None
     if args.checkpoint is not None:

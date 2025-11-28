@@ -29,7 +29,7 @@ class TrainingMetrics:
 
     def __post_init__(self):
         """Validate inputs and set default timestamp."""
-        # Input validation
+        # INPUT VALIDATION ENSURES METRICS STAY WITHIN EXPECTED RANGES.
         if self.epoch < 0:
             raise ValueError("Epoch must be non-negative")
         if self.step < 0:
@@ -45,7 +45,7 @@ class TrainingMetrics:
         if self.learning_rate is not None and self.learning_rate <= 0:
             raise ValueError("Learning rate must be positive")
 
-        # Set timestamp if not provided
+        # SET TIMESTAMP IF NOT PROVIDED SO METRIC HISTORY IS TIME-STAMPED.
         if self.timestamp is None:
             self.timestamp = datetime.now().isoformat()
 
@@ -105,15 +105,15 @@ class TrainingMetricsTracker(IMetricsTracker):
         self.auto_backup = auto_backup
         self.max_metrics_in_memory = max_metrics_in_memory
 
-        #  NEW: Backup configuration
+        # NEW: BACKUP CONFIGURATION TRACKS HOW OFTEN AND HOW MANY BACKUPS TO KEEP.
         self.backup_frequency = backup_frequency
         self.keep_backups = keep_backups
         self._backup_base_path: Optional[Path] = None
 
-        # Thread safety
+        # THREAD SAFETY: USE A REENTRANT LOCK BECAUSE TRACKER MAY BE CALLED FROM DIFFERENT THREADS.
         self._lock = threading.RLock()
 
-        # Configuration
+        # CONFIGURATION DICT MIRRORS WHAT FIELDS ARE BEING TRACKED AND HOW OFTEN TO BACKUP.
         self.config = {
             'track_train_loss': True,
             'track_val_loss': True,
@@ -123,6 +123,7 @@ class TrainingMetricsTracker(IMetricsTracker):
             'backup_frequency': backup_frequency,
             'keep_backups': keep_backups
         }
+        self.metric_directions: Dict[str, str] = {}
 
     def configure_backup(self, backup_base_path: Union[str, Path]) -> None:
         # CHOOSE WHERE PERIODIC BACKUP FILES ARE WRITTEN.
@@ -153,11 +154,22 @@ class TrainingMetricsTracker(IMetricsTracker):
     def configure_tracking(self, **kwargs) -> None:
         """Configure which metrics to track and backup settings."""
         with self._lock:
-            # Update backup settings if provided
+            # UPDATE BACKUP SETTINGS IF PROVIDED BY THE CALLER.
             if 'backup_frequency' in kwargs:
                 self.backup_frequency = kwargs['backup_frequency']
             if 'keep_backups' in kwargs:
                 self.keep_backups = kwargs['keep_backups']
+
+            metric_directions = kwargs.pop('metric_directions', None)
+            if metric_directions is not None:
+                self.metric_directions = {
+                    name: direction.lower()
+                    for name, direction in metric_directions.items()
+                }
+                if self.metric_directions:
+                    self.config['metric_directions'] = self.metric_directions.copy()
+                elif 'metric_directions' in self.config:
+                    self.config.pop('metric_directions')
 
             self.config.update(kwargs)
             self.logger.info(f"Updated tracking configuration: {self.config}")
@@ -167,13 +179,6 @@ class TrainingMetricsTracker(IMetricsTracker):
         with self._lock:
             self.start_time = datetime.now().isoformat()
             self.logger.info(f"Training started at {self.start_time}")
-            
-            # Only seed initial dummy if no prior history
-            if not self.metrics:
-                initial = TrainingMetrics(epoch=0, step=0,
-                                        train_loss=0.0, val_loss=0.0,
-                                        train_acc=0.0, val_acc=0.0)
-                self.metrics = [initial]
 
     def end_training(self) -> None:
         """Record the end time of training."""
@@ -188,7 +193,7 @@ class TrainingMetricsTracker(IMetricsTracker):
         """
         try:
             with self._lock:
-                # Memory management
+                # MEMORY MANAGEMENT: WARN IF THE IN-MEMORY HISTORY GROWS BEYOND THE SAFETY LIMIT.
                 if len(self.metrics) >= self.max_metrics_in_memory:
                     self.logger.warning(
                         f"Reached maximum metrics in memory ({self.max_metrics_in_memory}). "
@@ -370,11 +375,54 @@ class TrainingMetricsTracker(IMetricsTracker):
         # Handle additional metrics dynamically
         if metrics.additional_metrics:
             for metric_name, value in metrics.additional_metrics.items():
-                # Assume higher is better for custom metrics (can be configured)
-                if (metric_name not in self.best_metrics or
-                    value > self.best_metrics[metric_name].additional_metrics.get(metric_name, float('-inf'))):
+                if value is None:
+                    continue
+
+                direction = self._get_metric_direction(metric_name)
+                if metric_name not in self.best_metrics:
                     self.best_metrics[metric_name] = metrics
-                    self.logger.info(f"New best {metric_name}: {value}")
+                    self.logger.info(f"Tracking new metric {metric_name} ({direction}) with value {value}")
+                    continue
+
+                previous = self.best_metrics[metric_name].additional_metrics.get(metric_name)
+
+                if previous is None:
+                    self.best_metrics[metric_name] = metrics
+                    self.logger.debug(f"Set baseline for {metric_name}: {value}")
+                    continue
+
+                if direction == 'min':
+                    if value < previous:
+                        self.best_metrics[metric_name] = metrics
+                        self.logger.info(f"New best (min) {metric_name}: {value}")
+                elif direction == 'last':
+                    self.best_metrics[metric_name] = metrics
+                    self.logger.debug(f"Updated {metric_name} to latest value {value}")
+                else:  # default to max
+                    if value > previous:
+                        self.best_metrics[metric_name] = metrics
+                        self.logger.info(f"New best (max) {metric_name}: {value}")
+
+    def _get_metric_direction(self, metric_name: str) -> str:
+        """Determine whether a metric should be maximised, minimised, or just tracked."""
+        if metric_name in self.metric_directions:
+            direction = self.metric_directions[metric_name]
+            if direction in {'min', 'max', 'last'}:
+                return direction
+
+        name = metric_name.lower()
+        loss_keywords = ('loss', 'error', 'mae', 'mse', 'rmse', 'perplexity', 'nll')
+        maximise_keywords = ('acc', 'accuracy', 'dice', 'iou', 'precision', 'recall', 'f1', 'auc', 'psnr', 'ssim', 'tpr', 'tnr')
+
+        if any(keyword in name for keyword in loss_keywords):
+            return 'min'
+        if 'lr' in name or 'learning_rate' in name:
+            return 'last'
+        if any(keyword in name for keyword in maximise_keywords):
+            return 'max'
+
+        # Default to maximising if direction is unknown
+        return 'max'
 
     def get_best_metric(self, metric_name: str) -> Optional[TrainingMetrics]:
         """Retrieve the best metric by key with thread safety."""
@@ -593,6 +641,12 @@ class TrainingMetricsTracker(IMetricsTracker):
                     'keep_backups': self.keep_backups
                 }
                 self.config.update(loaded_config)
+                metric_directions = self.config.get('metric_directions', {})
+                if isinstance(metric_directions, dict):
+                    self.metric_directions = {
+                        name: direction.lower()
+                        for name, direction in metric_directions.items()
+                    }
                 self.config.update(backup_config)
 
                 self.logger.info(f"Successfully loaded {len(self.metrics)} metrics from {path}")
@@ -608,6 +662,7 @@ class TrainingMetricsTracker(IMetricsTracker):
             self.best_metrics.clear()
             self.start_time = None
             self.end_time = None
+            self.metric_directions.clear()
             self.logger.info("Reset all metrics and state")
 
     def get_metrics_subset(self, start_epoch: int = 0, end_epoch: Optional[int] = None) -> List[TrainingMetrics]:

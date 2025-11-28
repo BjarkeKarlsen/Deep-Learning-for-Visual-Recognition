@@ -4,6 +4,7 @@ from typing import List, Optional
 from pathlib import Path
 
 @dataclass
+# AUGMENTATION SETTINGS CONTROL HOW IMAGES ARE RANDOMISED DURING TRAINING.
 class AugmentationConfig:
     enable: bool = False
     random_resized_crop: bool = True
@@ -27,6 +28,7 @@ class AugmentationConfig:
 
 
 @dataclass
+# DATA SETTINGS DEFINE WHICH HUGGING FACE DATASET TO USE AND HOW MANY SAMPLES TO PULL.
 class DataConfig:
     dataset_name: str = "saberzl/SID_Set"
     image_size: int = 512
@@ -38,6 +40,7 @@ class DataConfig:
     augment: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 @dataclass
+# LOADER SETTINGS CONTROL PYTORCH DATALOADER BEHAVIOUR SUCH AS BATCH SIZE AND WORKERS.
 class LoaderConfig:
     batch_size: int = 4
     shuffle_train: bool = True
@@ -48,18 +51,38 @@ class LoaderConfig:
     persistent_workers: bool = False
 
 @dataclass
+# BACKBONE SETTINGS SELECT WHICH FEATURE EXTRACTOR THE SEGMENTATION MODEL USES.
+class BackboneConfig:
+    name: str = "custom"
+    pretrained: bool = False
+    trainable_layers: int = 4
+
+@dataclass
+# EVALUATION SETTINGS CONFIGURE THRESHOLD SWEEPS, BUCKET REPORTS, AND OPTIONAL BACKGROUND CHECKS.
+class EvaluationConfig:
+    report_background: bool = False
+    background_samples: int = 0
+    thresholds: List[float] = field(default_factory=lambda: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    bucket_edges: List[float] = field(default_factory=lambda: [0.5, 2.0])
+    analysis_examples: int = 6
+
+@dataclass
+# MODEL SETTINGS COVER CLASS LABELS, NORMALISATION VALUES, AND BACKBONE PARAMETERS.
 class ModelConfig:
     class_names: List[str] = field(default_factory=lambda: ["Real", "Synthetic", "Tampered"])
     num_classes: int = field(init=False)
     normalize_mean: List[float] = field(default_factory=lambda: [0.485, 0.456, 0.406])
     normalize_std: List[float] = field(default_factory=lambda: [0.229, 0.224, 0.225])
     tampered_label: int = 2
+    base_width: int = 16
+    backbone: "BackboneConfig" = field(default_factory=lambda: BackboneConfig())
 
     def __post_init__(self) -> None:
-        # Cache the class count so downstream consumers skip recomputing len(class_names).
+        # CACHE THE CLASS COUNT SO DOWNSTREAM CODE DOES NOT RECALCULATE LEN(CLASS_NAMES).
         self.num_classes = len(self.class_names)
 
 @dataclass
+# OPTIMISER SETTINGS DESCRIBE WHICH OPTIMISATION ALGORITHM AND REGULARISATION TERMS TO USE.
 class OptimizerConfig:
     name: str = "adam"
     weight_decay: float = 0.0
@@ -68,6 +91,7 @@ class OptimizerConfig:
     nesterov: bool = False
 
 @dataclass
+# SCHEDULER SETTINGS CONTROL OPTIONAL LEARNING RATE SCHEDULES.
 class SchedulerConfig:
     name: str = ""
     t_max: int = 0
@@ -77,20 +101,32 @@ class SchedulerConfig:
     final_div_factor: float = 10000.0
 
 @dataclass
+# LOSS SETTINGS TUNE THE RELATIVE WEIGHTS OF BCE AND DICE TERMS FOR SEGMENTATION.
+class LossConfig:
+    type: str = "bce"
+    bce_weight: float = 0.5
+    dice_weight: float = 0.5
+    focal_alpha: float = 0.25
+    focal_gamma: float = 2.0
+
+@dataclass
+# TRAINING SETTINGS COVER GLOBAL HYPERPARAMETERS, DEVICE SELECTION, AND BOOK-KEEPING CADENCE.
 class TrainingConfig:
     epochs: int = 100
     learning_rate: float = 0.001
     seed: int = 42
-    device: str = "cpu"  # ConfigLoader overwrites this based on accelerator availability
-    checkpoint_frequency: int = 5                # checkpoint frequency
-    keep_checkpoints: int = 3             # retention policy
+    device: str = "cpu"  # CONFIG LOADER OVERWRITES THIS BASED ON ACCELERATOR AVAILABILITY.
+    checkpoint_frequency: int = 5                # HOW OFTEN TO CREATE CHECKPOINTS.
+    keep_checkpoints: int = 3             # HOW MANY CHECKPOINTS TO RETAIN ON DISK.
     label_smoothing: float = 0.0
     grad_clip_norm: float = 0.0
     ema_decay: float = 0.0
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    loss: LossConfig = field(default_factory=LossConfig)
 
 @dataclass
+# PATH SETTINGS CONTROL WHERE RUN ARTIFACTS, LOGS, AND CHECKPOINTS ARE STORED.
 class PathsConfig:
     base: Path = Path("outputs") 
     run_id: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%dT%H%M%SZ"))
@@ -103,7 +139,7 @@ class PathsConfig:
     checkpoints: str = "checkpoints"
     
     def __post_init__(self):
-        # Defer directory creation until the task name is populated.
+        # DEFER DIRECTORY CREATION UNTIL THE TASK NAME IS POPULATED.
         if self.task:
             (self.base / self.task / "runs" / self.run_id).mkdir(parents=True, exist_ok=True)
     
@@ -148,16 +184,19 @@ class PathsConfig:
         return p
     
 @dataclass(frozen=True)
+# TASK ENUMERATION HELPS THE CLI MAP STRINGS TO KNOWN PIPELINES.
 class TaskConfig:
     CLASSIFICATION: str = "classification"
     SEGMENTATION: str = "segmentation"
     PLOT: str = "plot"
     
 @dataclass
+# ROOT CONFIG OBJECT THAT BUNDLES ALL SUB-CONFIGS INTO ONE STRUCTURE.
 class Config:
     data: DataConfig = field(default_factory=DataConfig)
     loader: LoaderConfig = field(default_factory=LoaderConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     Task: TaskConfig = field(default_factory=TaskConfig)

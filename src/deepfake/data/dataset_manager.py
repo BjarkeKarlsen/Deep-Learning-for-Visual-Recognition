@@ -1,4 +1,5 @@
 from typing import Optional, Literal, Callable
+import numpy as np
 from datasets import Dataset, load_dataset, DownloadMode
 
 TRAIN = "train"
@@ -9,7 +10,7 @@ SplitType = Literal["train", "validation", "test"]
 
 
 class SIDDatasetManager:
-    # CENTRALISES DATASET LOADING, STREAMING HANDLING, AND SPLIT FILTERING.
+    # CENTRALISES DATASET LOADING, STREAMING HANDLING, AND SPLIT FILTERING ACROSS THE TOOLKIT.
     def __init__(
         self,
         dataset_name: str,
@@ -41,7 +42,7 @@ class SIDDatasetManager:
           - derive from 'validation' if val_offset > 0
           - derive from 'train' if val_offset == 0 and test_offset >= 0
         """
-        # ESTIMATE HOW MANY SAMPLES TO PRELOAD WHEN FILTERING.
+        # ESTIMATE HOW MANY SAMPLES TO PRELOAD WHEN FILTERING SO STREAMING RUNS STILL COLLECT ENOUGH RECORDS.
         filter_multiplier = 4
         if max_samples is None:
             load_n = None
@@ -50,7 +51,7 @@ class SIDDatasetManager:
         else:
             load_n = max_samples
         
-        # STEP 1: LOAD THE REQUESTED BASE SPLIT.
+        # STEP 1: LOAD THE REQUESTED BASE SPLIT FROM HUGGING FACE DATASETS.
         if split_type == TRAIN:
             ds = self._load_split(TRAIN, max_samples=load_n)
         elif split_type == VALIDATION:
@@ -66,7 +67,7 @@ class SIDDatasetManager:
         else:
             raise ValueError(f"Unknown split type: {split_type}")
         
-        # STEP 2: MATERIALISE STREAMING SPLITS INTO MAP-STYLE DATASETS.
+        # STEP 2: WHEN STREAMING, MATERIALISE THE GENERATOR INTO A MAP-STYLE DATASET SO PYTORCH CAN INDEX IT.
         if self.use_streaming:
             if load_n is None:
                 raise ValueError(
@@ -76,11 +77,11 @@ class SIDDatasetManager:
             ds = Dataset.from_list(list(ds))
             print(f"Converted streaming to HF Dataset with {len(ds)} samples")
         
-        # STEP 3: RETURN EARLY IF NO FILTERING OR LIMITING IS NEEDED.
+        # STEP 3: IF NO FILTERING OR SAMPLE LIMIT IS REQUESTED, RETURN THE RAW SPLIT.
         if filter_fn is None and max_samples is None:
             return ds
 
-        # STEP 4: APPLY OPTIONAL FILTERS BEFORE SLICING.
+        # STEP 4: APPLY OPTIONAL FILTERS (E.G., ONLY TAMPERED FRAMES) BEFORE TRIMMING SAMPLE COUNTS.
         if filter_fn:
             ds = self._filter_dataset(
                 dataset=ds,
@@ -90,7 +91,7 @@ class SIDDatasetManager:
             print(f"After filtering, {split_type} dataset size: {len(ds)}")
             
 
-        # STEP 5: SLICE DOWN TO THE REQUESTED SAMPLE COUNT.
+        # STEP 5: LIMIT THE DATASET TO THE REQUESTED SAMPLE COUNT SO TRAINING REMAINS LIGHTWEIGHT.
         if max_samples is not None:
             ds = ds.select(range(min(max_samples, len(ds))))
             print(f"After slicing top {max_samples}, {split_type} size: {len(ds)}")
@@ -103,7 +104,7 @@ class SIDDatasetManager:
         *,
         max_samples: Optional[int] = None,
     ) -> Dataset:
-        # WRAPS load_dataset SO STREAMING AND NON-STREAMING MODES LOOK THE SAME.
+        # WRAPS LOAD_DATASET SO STREAMING AND NON-STREAMING MODES LOOK THE SAME TO CALLERS.
         if not self.use_streaming:
             slice_str = f"{split}[:{max_samples or ''}]"
             print(f"Loading {self.dataset_name} split '{slice_str}' (non-streaming)...")
@@ -134,9 +135,8 @@ class SIDDatasetManager:
         filter_fn: Optional[Callable] = None,
     ) -> Dataset:
         """
-        Build a test split that is disjoint from the validation subset when both
-        originate from the same HuggingFace split (validation/train). Filtering
-        is applied before slicing so the offset is measured on the filtered view.
+        BUILD A TEST SPLIT THAT IS DISJOINT FROM VALIDATION WHEN BOTH COME FROM THE SAME SOURCE SPLIT.
+        FILTERING HAPPENS BEFORE SLICING SO OFFSETS ARE MEASURED ON THE FILTERED DATA.
         """
         if not use_test_or_val_as_test_set:
             # BASE CASE: USE THE DEDICATED TEST SPLIT IF AVAILABLE.
@@ -163,7 +163,7 @@ class SIDDatasetManager:
                 ds = ds.select(range(max_samples))
             return ds
 
-        # Case 1: Derive from validation (if val_offset > 0)
+        # CASE 1: USE THE VALIDATION TAIL AS TEST WHEN NO DEDICATED TEST SPLIT EXISTS.
         if val_offset > 0:
             # USE VALIDATION TAIL AS TEST WHEN NO SEPARATE TEST SPLIT EXISTS.
             if self.use_streaming:
@@ -192,7 +192,7 @@ class SIDDatasetManager:
                 end = total if max_samples is None else min(start + max_samples, total)
                 return full_val.select(range(start, end))
 
-        # Case 2: Derive from train (if val_offset == 0)
+        # CASE 2: FALL BACK TO THE TRAIN SPLIT WHEN VALIDATION OFFSET IS ZERO.
         if val_offset == 0 and train_offset >= 0:
             # SHIFT INTO THE TRAINING SPLIT TO CARVE OUT A TEST WINDOW.
             if self.use_streaming:
@@ -333,7 +333,19 @@ class DatasetFilters:
     @staticmethod
     def tampered_with_masks(example):
         """Filter for segmentation: only tampered images with valid masks."""
-        return example["label"] == 2 and example.get("mask") is not None
+        if example.get("label") != 2:
+            return False
+        mask = example.get("mask")
+        if mask is None:
+            return False
+        try:
+            mask_array = np.asarray(mask)
+            if mask_array.size == 0:
+                return False
+            mask_sum = mask_array.astype(np.float32).sum()
+        except Exception:
+            return False
+        return mask_sum > 0
     
     @staticmethod
     def classification_only(example):
@@ -349,3 +361,8 @@ class DatasetFilters:
     def synthetic_images_only(example):
         """Filter for synthetic images only."""
         return example["label"] == 1
+
+    @staticmethod
+    def non_tampered(example):
+        """Filter out tampered entries; useful for background false-positive analysis."""
+        return example.get("label") is not None and example["label"] != 2

@@ -7,6 +7,7 @@ from deepfake.config.schema import OptimizerConfig, TrainingConfig
 
 
 class OptimizerFactory:
+    # BUILDS A TORCH OPTIMISER BASED ON YAML CONFIG VALUES SO TRAINERS STAY DECLARATIVE.
     def __new__(
         cls,
         parameters: Iterable[torch.nn.Parameter],

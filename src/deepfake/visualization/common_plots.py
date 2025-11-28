@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List, Tuple
 
 class CommonPlots:
     """Base class for plotting, with unified save logic."""
@@ -19,25 +19,69 @@ class CommonPlots:
         plt.ioff()
         self._create_save_path(self.output_dir)
         self._setup_plot_style()
+        self.palette = sns.color_palette("deep")
 
     def _setup_plot_style(self):
         """Set up consistent plotting style across all plots."""
-        plt.style.use('default')
-        sns.set_palette("husl")
+        sns.set_theme(context="talk", style="whitegrid")
+        # DEFAULT PALETTE PRIORITISES GOOD CONTRAST ON LIGHT BACKGROUNDS.
+        palette = sns.color_palette("deep")
         plt.rcParams.update({
             'figure.figsize': (10, 6),
             'axes.titlesize': 14,
+            'axes.titleweight': 'semibold',
             'axes.labelsize': 12,
+            'axes.facecolor': '#f7f9fc',
+            'figure.facecolor': 'white',
+            'font.size': 11,
             'xtick.labelsize': 10,
             'ytick.labelsize': 10,
             'legend.fontsize': 10,
-            'grid.alpha': 0.3
+            'axes.edgecolor': '#d6d9de',
+            'axes.linewidth': 0.8,
+            'grid.alpha': 0.35,
+            'grid.linestyle': '--',
+            'savefig.bbox': 'tight',
         })
+        plt.rcParams['axes.prop_cycle'] = plt.cycler(color=palette)
+        self._axis_facecolor = '#f7f9fc'
     
     def _create_save_path(self, path: Path) -> Path:
         """Create save_path directory if it doesn't exist."""
         path.parent.mkdir(parents=True, exist_ok=True)
         return path.parent
+
+    def _style_axis(
+        self,
+        ax: plt.Axes,
+        *,
+        title: Optional[str] = None,
+        xlabel: Optional[str] = None,
+        ylabel: Optional[str] = None,
+        grid: bool = True,
+        facecolor: Optional[str] = None,
+    ) -> None:
+        """Apply a consistent visual treatment to axes."""
+        if facecolor is None:
+            facecolor = getattr(self, "_axis_facecolor", None)
+        if facecolor:
+            ax.set_facecolor(facecolor)
+        if title is not None:
+            ax.set_title(title, fontsize=14, fontweight='semibold', pad=12)
+        if xlabel is not None:
+            ax.set_xlabel(xlabel, fontsize=12, labelpad=10)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel, fontsize=12, labelpad=10)
+        if grid:
+            ax.grid(True, which="major", color="#d0d6e0", linewidth=0.8, alpha=0.5)
+            ax.set_axisbelow(True)
+        else:
+            ax.grid(False)
+        ax.tick_params(axis='both', colors='#3d3d3d')
+        for spine in ('top', 'right'):
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color('#d6d9de')
+        ax.spines['bottom'].set_color('#d6d9de')
     
     def load_training_history(self, json_path: Union[str, Path]) -> Dict[str, Any]:
         """
@@ -57,13 +101,13 @@ class CommonPlots:
         with open(json_path, 'r') as f:
             data = json.load(f)
         
-        # Extract metrics from the tracker format
+        # EXTRACT METRICS FROM THE TRACKER FORMAT.
         metrics = data.get('metrics', [])
         
         if not metrics:
             raise ValueError("No metrics found in the training history file")
         
-        # Initialize curves dictionary
+        # INITIALISE CURVES DICTIONARY WITH CORE TRAINING FIELDS.
         curves = {
             'epochs': [],
             'steps': [],
@@ -75,10 +119,10 @@ class CommonPlots:
             'timestamps': []
         }
         
-        # Track additional metrics dynamically
+        # TRACK ADDITIONAL METRIC KEYS AS THEY APPEAR SO WE CAN PLOT THEM LATER.
         additional_metric_names = set()
         
-        # Process each metric entry
+        # PROCESS EACH METRIC ENTRY AND POPULATE THE CURVES STRUCTURE.
         for metric in metrics:
             curves['epochs'].append(metric['epoch'])
             curves['steps'].append(metric['step'])
@@ -89,7 +133,7 @@ class CommonPlots:
             curves['learning_rate'].append(metric.get('learning_rate'))
             curves['timestamps'].append(metric.get('timestamp'))
             
-            # Handle additional metrics
+            # HANDLE ADDITIONAL METRICS SUCH AS DICE OR LR GROUPS.
             additional_metrics = metric.get('additional_metrics')
             if additional_metrics:
                 for key, value in additional_metrics.items():
@@ -98,20 +142,20 @@ class CommonPlots:
                         additional_metric_names.add(key)
                     curves[key][-1] = value  # Set current value
             
-            # Ensure all additional metrics have entries for this step
+            # ENSURE ALL ADDITIONAL METRICS HAVE PLACEHOLDER ENTRIES FOR EVERY EPOCH.
             for key in additional_metric_names:
                 if key not in curves:
                     curves[key] = [None] * len(curves['epochs'])
                 elif len(curves[key]) < len(curves['epochs']):
                     curves[key].append(None)
         
-        # Clean up None values for plotting
+        # CLEAN UP NONE VALUES SO MATPLOTLIB RECEIVES CLEAN NUMERIC SERIES.
         processed_curves = {}
         for key, values in curves.items():
             if key in ['epochs', 'steps', 'timestamps']:
                 processed_curves[key] = values  # Keep these as lists
             else:
-                # Filter out None values but keep track of original indices
+                # FILTER OUT NONE VALUES WHILE KEEPING TRACK OF WHICH EPOCH THEY BELONGED TO.
                 filtered_values = []
                 filtered_epochs = []
                 for i, value in enumerate(values):
@@ -123,7 +167,7 @@ class CommonPlots:
                 processed_curves[key] = filtered_values
                 processed_curves[f'{key}_epochs'] = filtered_epochs
         
-        # Add metadata
+        # ADD METADATA SO CALLERS CAN UNDERSTAND RUN DURATION AND BEST SCORES.
         processed_curves['_metadata'] = {
             'start_time': data.get('start_time'),
             'end_time': data.get('end_time'),
@@ -136,6 +180,23 @@ class CommonPlots:
         }
         
         return processed_curves
+
+    @staticmethod
+    def extract_series(curves: Dict[str, Any], key: str, fallback_epochs: List[int]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Return (epochs, values) arrays for a metric key, or (None, None) if absent."""
+        values = curves.get(key)
+        if not values:
+            return None, None
+        epoch_key = curves.get(f"{key}_epochs")
+        epochs = epoch_key if epoch_key else fallback_epochs[:len(values)]
+        try:
+            epoch_arr = np.asarray(epochs, dtype=float)
+            value_arr = np.asarray(values, dtype=float)
+        except Exception:
+            return None, None
+        if value_arr.size == 0:
+            return None, None
+        return epoch_arr, value_arr
     
     def load_evaluation_report(self, json_path: Union[str, Path]) -> Dict[str, Any]:
         """
@@ -170,15 +231,15 @@ class CommonPlots:
         Returns:
             The full Path to the saved file.
         """
-        # Determine directory
+        # DETERMINE WHICH DIRECTORY SHOULD HOLD THE OUTPUT PLOT.
         directory = Path(save_path) if save_path else self.output_dir
         directory.mkdir(parents=True, exist_ok=True)
 
-        # Determine filename
+        # DETERMINE FILENAME, DEFAULTING TO A GENERIC NAME WHEN NOT PROVIDED.
         fname = filename or "plot.png"
         path = directory / fname
 
-        # Save and close
+        # SAVE THE FIGURE AND CLOSE IT TO FREE MEMORY.
         fig.savefig(path, dpi=dpi, bbox_inches=bbox_inches, facecolor=facecolor)
         plt.close(fig)
         print(f"Saved plot -> {path}")

@@ -17,13 +17,13 @@ from deepfake.data.dataset_manager import TEST, SIDDatasetManager
 from deepfake.utils.logger import SidLogger
 
 from ..data.dataset import SIDClassificationDataset
-from .model import BaselineClassifier
+from .model import build_classification_model
 
 class Evaluator:
     """
     Runs classification inference, records metrics, and generates plots.
     """
-    # HANDLES TEST-TIME INFERENCE, METRIC REPORTING, AND PLOTS.
+    # HANDLES TEST-TIME INFERENCE, METRIC REPORTING, AND PLOT GENERATION FOR CLASSIFICATION RUNS.
 
     def __init__(self, cfg: Config, logger: SidLogger):
         self.cfg = cfg
@@ -31,7 +31,7 @@ class Evaluator:
         self.device = torch.device(cfg.training.device)
 
         # DATASET & DATALOADER
-        # BUILD A DETERMINISTIC TEST LOADER MIRRORING TRAIN PREPROCESSING.
+        # BUILD A DETERMINISTIC TEST LOADER THAT USES THE SAME PREPROCESSING AS TRAINING.
         manager = SIDDatasetManager(
             dataset_name=cfg.data.dataset_name,
             use_streaming=cfg.data.use_streaming,
@@ -66,15 +66,15 @@ class Evaluator:
         )
 
         # METRICS TRACKER
-        # COLLECTS SUMMARY STATS FOR DOWNSTREAM VISUALISATION.
+        # COLLECT ALL EVALUATION RESULTS SO THEY CAN BE SAVED AND PLOTTED LATER.
         self.metrics_tracker = EvaluationMetricsTracker(
             ClassificationEvaluationMetrics,
             logger,
         )
 
         # MODEL
-        # RESTORE THE BEST-SAVED WEIGHTS TO THE TARGET DEVICE.
-        self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
+        # RESTORE THE BEST-SAVED WEIGHTS TO THE TARGET DEVICE BEFORE INFERENCE.
+        self.model = build_classification_model(cfg.model).to(self.device)
         self.persister = TorchModelPersister()
         self.persister.load_model(self.model, self.cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded model from {self.cfg.paths.model_path}")
@@ -83,7 +83,7 @@ class Evaluator:
     def run(self):
         """Execute the full evaluation pipeline."""
         self.logger.log_evaluation_config(asdict(self.cfg))
-        # MAIN ENTRYPOINT: RUN INFERENCE, SUMMARISE METRICS, THEN PLOT RESULTS.
+        # MAIN ENTRYPOINT: RUN INFERENCE, SUMMARISE METRICS, THEN GENERATE PLOTS.
         labels, preds = self.infer()
         self.compute_and_log(labels, preds)
         self.save_and_plot()
@@ -127,7 +127,7 @@ class Evaluator:
         self.logger.log_confusion_matrix(cm, labels=self.cfg.model.class_names)
 
         # RECORD EVALUATION METRICS
-        # STORE STRUCTURED RESULTS FOR LATER REPORTING.
+        # STORE STRUCTURED RESULTS SO LATER COMMANDS (PLOT, ANALYTICS) CAN REUSE THEM.
         self.metrics_tracker.add_metrics(
             ClassificationEvaluationMetrics(
                 task_type="classification",
