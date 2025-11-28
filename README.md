@@ -3,6 +3,7 @@
 Two lightweight PyTorch pipelines built on the Hugging Face [`saberzl/SID_Set`](https://huggingface.co/datasets/saberzl/SID_Set) dataset:
 
 - **Classification** – predicts `Real`, `Synthetic`, or `Tampered` frames with a compact CNN.
+- **Classification (ResNet option)** – set `model.backbone.name` to `resnet18`, `resnet34`, or `resnet50` to swap in a pretrained backbone while keeping the lightweight training loop.
 - **Segmentation** – localises tampered regions with a slim U-Net.
 
 Both share a common configuration system, logging utilities, dataset manager, and output conventions.

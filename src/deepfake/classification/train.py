@@ -26,7 +26,7 @@ from deepfake.utils.augmentation_factory import build_classification_transform
 from deepfake.visualization.classification_plots import ClassificationPlots
 from deepfake.data.dataset import SIDClassificationDataset
 from deepfake.utils.checkpoint_manager import CheckpointManager
-from .model import BaselineClassifier
+from .model import build_classification_model
 
 
 class Trainer:
@@ -51,7 +51,7 @@ class Trainer:
         
         
         # CORE TRAINING OBJECTS: MODEL, OPTIMISER, LOSS, MIXED PRECISION, SCHEDULER, AND OPTIONAL EMA.
-        self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
+        self.model = build_classification_model(cfg.model).to(self.device)
         self.optimizer = OptimizerFactory(self.model.parameters(), cfg.training)
         self.criterion = nn.CrossEntropyLoss(label_smoothing=getattr(cfg.training, "label_smoothing", 0.0))
         self.amp_enabled = self.device.type == "cuda" and torch.cuda.is_available()

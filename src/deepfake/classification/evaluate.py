@@ -17,7 +17,7 @@ from deepfake.data.dataset_manager import TEST, SIDDatasetManager
 from deepfake.utils.logger import SidLogger
 
 from ..data.dataset import SIDClassificationDataset
-from .model import BaselineClassifier
+from .model import build_classification_model
 
 class Evaluator:
     """
@@ -74,7 +74,7 @@ class Evaluator:
 
         # MODEL
         # RESTORE THE BEST-SAVED WEIGHTS TO THE TARGET DEVICE BEFORE INFERENCE.
-        self.model = BaselineClassifier(num_classes=cfg.model.num_classes).to(self.device)
+        self.model = build_classification_model(cfg.model).to(self.device)
         self.persister = TorchModelPersister()
         self.persister.load_model(self.model, self.cfg.paths.model_path, device=self.device)
         self.logger.info(f"Loaded model from {self.cfg.paths.model_path}")
